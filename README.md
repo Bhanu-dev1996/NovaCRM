@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# NovaCRM
 
-## Getting Started
+Monorepo with a Next.js frontend and FastAPI backend.
 
-First, run the development server:
+## Structure
+
+```
+frontend/   Next.js app (UI)
+backend/    FastAPI + Google OAuth + Supabase Postgres (port 4000)
+```
+
+## Setup
+
+From the repo root:
+
+```bash
+npm run setup
+```
+
+That installs `frontend/node_modules` and creates `backend/.venv`.
+
+Or step by step:
+
+```bash
+cd frontend && npm install
+cd ../backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Env secrets live only in the backend:
+
+- Copy `backend/.env.example` → `backend/.env`
+
+Frontend has no `.env` files (API URL defaults to `http://localhost:4000`).
+
+Fill in `backend/.env`:
+
+- Google OAuth: `AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- Database: `DATABASE_URL` — Supabase **Postgres URI**  
+  Project Settings → Database → Connect → URI  
+  Example: `postgresql://postgres:[PASSWORD]@db.xxxx.supabase.co:5432/postgres`
+- Verification email (so signup mail reaches the inbox):
+  - **Resend:** set `RESEND_API_KEY` (free at [resend.com](https://resend.com))  
+    Test sender `onboarding@resend.dev` only delivers to your Resend account email.  
+    For any inbox, verify a domain and set `EMAIL_FROM`.
+  - **Or SMTP:** `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`
+
+In Google Cloud Console, set the redirect URI to:
+
+`http://localhost:4000/api/auth/google/callback`
+
+### Database (all CRM data)
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Open **SQL Editor** and run `backend/supabase/schema.sql`
+3. Put the Postgres connection URI in `DATABASE_URL`
+
+Tables: `users`, `organizations`, `organization_members`, `companies`, `contacts`, `pipeline_stages`, `deals`, `activities`, `tasks`
+
+Seed demo users + workspace (verified, password `Password123!`):
+
+```bash
+cd backend
+.venv\Scripts\python scripts\seed_users.py
+.venv\Scripts\python scripts\seed_organization.py
+```
+
+That keeps workspace `a8414d8d-a9fd-4880-a557-01c9ef16046c`, seeds extra demo workspaces, and attaches members.
+
+Or run `backend/supabase/seeds/001_users.sql` and `002_organization.sql` in the Supabase SQL Editor.
+
+Auth options:
+
+- Google OAuth → upserts `users` (no password)
+- Email/password → `/signup` creates account, `/login` signs in; stores **bcrypt** `password_hash` in `users` (never plain text)
+
+Both create a default workspace and seed pipeline stages.
+
+Authenticated CRM API (cookie session):
+
+- `GET/POST /api/companies|contacts|deals|activities|tasks|pipeline-stages`
+- `GET/PATCH/DELETE /api/{resource}/{id}`
+- `GET /api/workspace`
+
+## Develop
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Frontend: http://localhost:3000  
+- Backend: http://localhost:4000 (`/api/health`, docs at `/docs`)
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+Or run one side:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run dev:frontend
+npm run dev:backend
+```

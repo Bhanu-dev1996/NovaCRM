@@ -1,22 +1,16 @@
 {
-  "name": "novacrm-ai",
+  "name": "novacrm",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "next": "16.4.3",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.3",
-    "tailwindcss": "^4"
+    "setup": "npm install --prefix frontend --legacy-peer-deps && npm run setup:backend",
+    "setup:backend": "cd backend && python -m venv .venv && .venv\\Scripts\\python -m pip install -r requirements.txt",
+    "dev": "start \"NovaCRM frontend\" cmd /k npm run dev --prefix frontend & start \"NovaCRM backend\" cmd /k npm run dev:backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "cd backend && .venv\\Scripts\\python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 4000",
+    "build": "npm run build --prefix frontend",
+    "start": "start \"NovaCRM frontend\" cmd /k npm run start --prefix frontend & start \"NovaCRM backend\" cmd /k npm run start:backend",
+    "start:backend": "cd backend && .venv\\Scripts\\python -m uvicorn app.main:app --host 0.0.0.0 --port 4000",
+    "lint": "npm run lint --prefix frontend"
   }
 }

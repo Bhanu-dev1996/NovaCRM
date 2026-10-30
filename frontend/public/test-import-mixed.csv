@@ -1,0 +1,6 @@
+first_name,last_name,email,phone,company,title,source,status,score,notes
+Good,Lead,good.lead@example.com,+1 (415) 555-0501,Good Co,Manager,Website,New,80,Should import
+,Broken,broken.firstname@example.com,+1 (415) 555-0502,Bad Co,Manager,Website,New,50,Missing first name
+Also,Good,also.good@example.com,+1 (415) 555-0503,Also Co,Director,Referral,Qualified,88,Should import
+Bad,Email,not-valid-email,+1 (415) 555-0504,Bad Co,Analyst,Manual,New,40,Invalid email
+Good,Lead,good.lead@example.com,+1 (415) 555-0505,Dup Co,Rep,Campaign,New,55,Duplicate of first row

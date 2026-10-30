@@ -1,0 +1,6 @@
+first_name,last_name,email,phone,company,title,source,status,score
+,Thompson,missing.firstname@example.com,+1 (415) 555-0301,Bad Co,Manager,Website,New,50
+Ava,,missing.lastname@example.com,+1 (415) 555-0302,Bad Co,Manager,Website,New,50
+Ava,Thompson,,+1 (415) 555-0303,Bad Co,Manager,Website,New,50
+Ava,Thompson,not-an-email,+1 (415) 555-0304,Bad Co,Manager,Website,New,50
+Ava,Thompson,ava.thompson@harborapps.com,+1 (415) 555-0305,Harbor Apps,Head of Growth,Website,New,78

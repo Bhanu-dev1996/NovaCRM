@@ -1,0 +1,316 @@
+/**
+ * NovaCRM AI — Enterprise CSS Custom Properties / Variables Specification
+ * Version: 2.4.0
+ * Architecture: W3C Design Tokens Spec & Figma 2.4 Variables Mapping
+ * Compatible with: Tailwind CSS, CSS Modules, Styled Components, PostCSS
+ */
+
+:root {
+  /* ==========================================================================
+     1. BRAND COLOR PALETTES (10-STEP TONAL RAMPS)
+     ========================================================================== */
+
+  /* Primary Indigo — Main CTA, Brand Identity & Primary Interactivity */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #4f46e5; /* Base Primary */
+  --color-primary-600: #4338ca; /* Primary Hover */
+  --color-primary-700: #3730a3; /* Primary Active/Pressed */
+  --color-primary-800: #312e81;
+  --color-primary-900: #1e1b4b;
+  --color-primary-950: #0f172a;
+
+  /* Secondary Violet — AI Insights, Copilot Accents & Automation Flows */
+  --color-secondary-50: #f5f3ff;
+  --color-secondary-100: #ede9fe;
+  --color-secondary-200: #ddd6fe;
+  --color-secondary-300: #c4b5fd;
+  --color-secondary-400: #a78bfa;
+  --color-secondary-500: #7c3aed; /* Base Secondary */
+  --color-secondary-600: #6d28d9; /* AI Action Hover */
+  --color-secondary-700: #5b21b6; /* AI Action Pressed */
+  --color-secondary-800: #4c1d95;
+  --color-secondary-900: #2e1065;
+
+  /* Tertiary Electric Blue — Pipeline Telemetry, Deals & Link Highlights */
+  --color-tertiary-50: #eff6ff;
+  --color-tertiary-100: #dbeafe;
+  --color-tertiary-200: #bfdbfe;
+  --color-tertiary-300: #93c5fd;
+  --color-tertiary-400: #60a5fa;
+  --color-tertiary-500: #2563eb; /* Base Tertiary */
+  --color-tertiary-600: #1d4ed8;
+  --color-tertiary-700: #1e40af;
+  --color-tertiary-800: #1e3a8a;
+  --color-tertiary-900: #172554;
+
+  /* Foundation Slate Neutrals Ramp */
+  --color-neutral-50: #f8fafc; /* Light Canvas Background */
+  --color-neutral-100: #f1f5f9; /* Subdued Containers / Hovers */
+  --color-neutral-200: #e2e8f0; /* Card & Table Border Separators */
+  --color-neutral-300: #cbd5e1; /* Secondary Dividers & Input Outlines */
+  --color-neutral-400: #94a3b8; /* Placeholder Text & Muted Glyphs */
+  --color-neutral-500: #64748b; /* Secondary Icons & Metadata */
+  --color-neutral-600: #475569; /* Table Captions & Secondary Text */
+  --color-neutral-700: #334155; /* Subheadings & Active Table Cells */
+  --color-neutral-800: #1e293b; /* Primary Headings & Dark Card Surface */
+  --color-neutral-900: #0f172a; /* High-Contrast Text & Dark Mode Canvas */
+
+  /* ==========================================================================
+     2. SEMANTIC ALERT & STATUS ROLES
+     ========================================================================== */
+
+  /* Success — Active Pipelines, Closed-Won Deals, Verified Tokens */
+  --color-status-success: #16a34a;
+  --color-status-success-surface: #f0fdf4;
+  --color-status-success-border: #bbf7d0;
+  --color-status-success-text: #14532d;
+
+  /* Warning — Attention Required, Sync Pending, Risk Alert */
+  --color-status-warning: #d97706;
+  --color-status-warning-surface: #fffbeb;
+  --color-status-warning-border: #fde68a;
+  --color-status-warning-text: #78350f;
+
+  /* Error / Destructive — Destructive Actions, SLA Failures, Overdue Deals */
+  --color-status-error: #dc2626;
+  --color-status-error-surface: #fef2f2;
+  --color-status-error-border: #fecaca;
+  --color-status-error-text: #7f1d1d;
+
+  /* Information — Copilot Insights, General Pipeline Notes */
+  --color-status-info: #0284c7;
+  --color-status-info-surface: #f0f9ff;
+  --color-status-info-border: #bae6fd;
+  --color-status-info-text: #0c4a6e;
+
+  /* ==========================================================================
+     3. SURFACE & BACKGROUND HIERARCHY (LIGHT MODE DEFAULT)
+     ========================================================================== */
+  --surface-base: var(--color-neutral-50);
+  --surface-card: #ffffff;
+  --surface-elevated: #ffffff;
+  --surface-modal: rgba(255, 255, 255, 0.95);
+  --surface-subtle: var(--color-neutral-100);
+
+  --text-primary: var(--color-neutral-900);
+  --text-secondary: var(--color-neutral-600);
+  --text-muted: var(--color-neutral-400);
+  --text-inverted: #ffffff;
+
+  --border-subtle: var(--color-neutral-200);
+  --border-strong: var(--color-neutral-300);
+  --border-focus: var(--color-primary-500);
+
+  /* ==========================================================================
+     4. 8px HARMONIC SPACING SYSTEM
+     ========================================================================== */
+  --space-2xs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px; /* Base grid unit (0.5rem) */
+  --space-md: 16px; /* Standard container & form padding (1rem) */
+  --space-lg: 24px; /* Section gutters & card margins (1.5rem) */
+  --space-xl: 32px; /* Modal dialog padding (2rem) */
+  --space-2xl: 48px; /* Feature stack spacing (3rem) */
+  --space-3xl: 64px; /* Page layout margins (4rem) */
+
+  /* ==========================================================================
+     5. GEOMETRIC RADIUS & ELEVATIONS
+     ========================================================================== */
+  --radius-none: 0px;
+  --radius-sm: 4px; /* Tags, micro badges */
+  --radius-md: 8px; /* Buttons, form inputs, dropdowns */
+  --radius-lg: 12px; /* Cards, widget modules */
+  --radius-xl: 16px; /* Modals, flyout panels, cmd+k */
+  --radius-full: 9999px; /* Pills, avatars, circular buttons */
+  --radius: var(--radius-md);
+
+  --elevation-1: 0px 1px 2px 0px rgba(0, 0, 0, 0.05);
+  --elevation-2: 0px 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --elevation-3: 0px 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --elevation-4: 0px 20px 25px -5px rgba(0, 0, 0, 0.15);
+
+  /* ==========================================================================
+     6. TYPOGRAPHY SCALES & METRICS
+     ========================================================================== */
+  --font-family-sans: var(--font-sans), Inter, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  --font-family-mono: var(--font-mono), "JetBrains Mono", ui-monospace,
+    SFMono-Regular, Menlo, monospace;
+
+  /* Display Lg — Hero Metrics & Key Landing Headlines */
+  --font-display-lg-size: 36px;
+  --font-display-lg-line-height: 44px;
+  --font-display-lg-weight: 700;
+  --font-display-lg-tracking: -0.025em;
+
+  /* Headline Md — Card Titles, Dashboard View Headers */
+  --font-headline-md-size: 24px;
+  --font-headline-md-line-height: 32px;
+  --font-headline-md-weight: 600;
+  --font-headline-md-tracking: -0.015em;
+
+  /* Headline Sm — Widget Headers, Modal Titles */
+  --font-headline-sm-size: 18px;
+  --font-headline-sm-line-height: 26px;
+  --font-headline-sm-weight: 500;
+  --font-headline-sm-tracking: -0.01em;
+
+  /* Body Regular — Core Content & Descriptions */
+  --font-body-regular-size: 16px;
+  --font-body-regular-line-height: 24px;
+  --font-body-regular-weight: 400;
+  --font-body-regular-tracking: 0em;
+
+  /* Label Caption — Table Headers, Form Labels & Metadata */
+  --font-label-caption-size: 13px;
+  --font-label-caption-line-height: 18px;
+  --font-label-caption-weight: 500;
+  --font-label-caption-tracking: 0.01em;
+
+  /* Code Telemetry — IDs, API Payloads & Webhook Logs */
+  --font-code-telemetry-size: 11px;
+  --font-code-telemetry-line-height: 16px;
+  --font-code-telemetry-weight: 500;
+  --font-code-telemetry-tracking: 0.02em;
+
+  /* ==========================================================================
+     7. AI COPILOT & LUMINOUS GRADIENT RECIPES
+     ========================================================================== */
+  --gradient-luminous-ai-aura: linear-gradient(
+    135deg,
+    #4f46e5 0%,
+    #7c3aed 50%,
+    #38bdf8 100%
+  );
+  --gradient-subtle-copilot-tint: linear-gradient(
+    180deg,
+    rgba(79, 70, 229, 0.08) 0%,
+    rgba(124, 58, 237, 0.02) 100%
+  );
+  --gradient-ai-risk-glow: linear-gradient(
+    135deg,
+    rgba(220, 38, 38, 0.12) 0%,
+    rgba(217, 119, 6, 0.08) 100%
+  );
+
+  /* ==========================================================================
+     8. RESPONSIVE BREAKPOINT REFERENCE
+     ========================================================================== */
+  --breakpoint-mobile: 390px;
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1024px;
+  --breakpoint-wide: 1440px;
+
+  /* ==========================================================================
+     9. SHADCN / UI SEMANTIC ALIASES (LIGHT)
+     ========================================================================== */
+  --background: var(--surface-base);
+  --foreground: var(--text-primary);
+  --card: var(--surface-card);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--color-primary-500);
+  --primary-foreground: var(--text-inverted);
+  --secondary: var(--color-secondary-50);
+  --secondary-foreground: var(--color-secondary-700);
+  --muted: var(--surface-subtle);
+  --muted-foreground: var(--color-neutral-500);
+  --accent: var(--color-primary-50);
+  --accent-foreground: var(--color-primary-700);
+  --destructive: var(--color-status-error);
+  --border: var(--border-subtle);
+  --input: var(--border-strong);
+  --ring: var(--border-focus);
+  --chart-1: var(--color-primary-500);
+  --chart-2: var(--color-secondary-500);
+  --chart-3: var(--color-tertiary-500);
+  --chart-4: var(--color-status-success);
+  --chart-5: var(--color-status-warning);
+  --sidebar: var(--surface-card);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--color-primary-500);
+  --sidebar-primary-foreground: var(--text-inverted);
+  --sidebar-accent: var(--color-primary-50);
+  --sidebar-accent-foreground: var(--color-primary-700);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--border-focus);
+}
+
+/* ==========================================================================
+   DARK MODE THEME ADAPTATION
+   ========================================================================== */
+[data-theme="dark"],
+.dark {
+  --surface-base: var(--color-neutral-900);
+  --surface-card: var(--color-neutral-800);
+  --surface-elevated: var(--color-neutral-700);
+  --surface-modal: rgba(15, 23, 42, 0.95);
+  --surface-subtle: rgba(255, 255, 255, 0.04);
+
+  --text-primary: #ffffff;
+  --text-secondary: var(--color-neutral-300);
+  --text-muted: var(--color-neutral-500);
+  --text-inverted: var(--color-neutral-900);
+
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --border-focus: var(--color-primary-400);
+
+  --elevation-1: 0px 1px 2px 0px rgba(0, 0, 0, 0.4);
+  --elevation-2: 0px 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --elevation-3: 0px 10px 15px -3px rgba(0, 0, 0, 0.6);
+  --elevation-4: 0px 20px 25px -5px rgba(0, 0, 0, 0.7);
+
+  --color-status-success-surface: rgba(22, 163, 74, 0.12);
+  --color-status-success-border: rgba(22, 163, 74, 0.35);
+  --color-status-success-text: #86efac;
+
+  --color-status-warning-surface: rgba(217, 119, 6, 0.12);
+  --color-status-warning-border: rgba(217, 119, 6, 0.35);
+  --color-status-warning-text: #fcd34d;
+
+  --color-status-error-surface: rgba(220, 38, 38, 0.12);
+  --color-status-error-border: rgba(220, 38, 38, 0.35);
+  --color-status-error-text: #fca5a5;
+
+  --color-status-info-surface: rgba(2, 132, 199, 0.12);
+  --color-status-info-border: rgba(2, 132, 199, 0.35);
+  --color-status-info-text: #7dd3fc;
+
+  --background: var(--surface-base);
+  --foreground: var(--text-primary);
+  --card: var(--surface-card);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--color-primary-400);
+  --primary-foreground: var(--color-primary-950);
+  --secondary: rgba(124, 58, 237, 0.18);
+  --secondary-foreground: var(--color-secondary-200);
+  --muted: var(--surface-subtle);
+  --muted-foreground: var(--color-neutral-400);
+  --accent: rgba(79, 70, 229, 0.18);
+  --accent-foreground: var(--color-primary-200);
+  --destructive: #f87171;
+  --border: var(--border-subtle);
+  --input: var(--border-strong);
+  --ring: var(--border-focus);
+  --chart-1: var(--color-primary-400);
+  --chart-2: var(--color-secondary-400);
+  --chart-3: var(--color-tertiary-400);
+  --chart-4: var(--color-status-success);
+  --chart-5: var(--color-status-warning);
+  --sidebar: var(--surface-card);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--color-primary-400);
+  --sidebar-primary-foreground: var(--color-primary-950);
+  --sidebar-accent: rgba(79, 70, 229, 0.18);
+  --sidebar-accent-foreground: var(--color-primary-200);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--border-focus);
+}
