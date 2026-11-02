@@ -8,10 +8,13 @@ import { toast } from "sonner";
 import {
   ArrowDownUp,
   BadgeCheck,
+  Building2,
+  Clock,
   Columns3,
+  Copy,
   Download,
-  FileSpreadsheet,
   Filter,
+  GripVertical,
   Kanban,
   LayoutList,
   Loader2,
@@ -34,12 +37,9 @@ import {
   mapMemberToOwner,
   toApiLead,
 } from "@/components/leads/lead-api";
+import { parseLeadCsvFile } from "@/components/leads/lead-import";
+import { CsvImportDialog } from "@/components/shared/csv-import-dialog";
 import {
-  mapCsvRowsToLeads,
-  parseCsv,
-} from "@/components/leads/lead-import";
-import {
-  LEAD_AI_INSIGHTS,
   LEAD_OWNERS,
   LEAD_SOURCES,
   LEAD_SOURCE_STYLES,
@@ -47,7 +47,6 @@ import {
   LEAD_STATUSES,
   fullName,
   ownerById,
-  scoreTone,
 } from "@/components/leads/leads-data";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -92,6 +91,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Tabs,
   TabsList,
@@ -124,15 +124,94 @@ const PAGE_SIZES = [10, 20, 40, 50, 100];
 
 const STAGE_COLORS = {
   New: "bg-sky-500",
-  Contacted: "bg-amber-500",
-  Qualified: "bg-emerald-500",
+  Contacted: "bg-orange-500",
+  Qualified: "bg-cyan-500",
   Nurturing: "bg-violet-500",
-  Converted: "bg-primary-600",
-  Lost: "bg-neutral-400",
+  Converted: "bg-emerald-500",
+  Lost: "bg-red-500",
 };
+
+const OPEN_LEAD_STATUSES = ["New", "Contacted", "Qualified", "Nurturing"];
+const HIGH_SCORE = 70;
+const STALE_DAYS = 7;
 
 function formatCount(value) {
   return new Intl.NumberFormat("en-US").format(value);
+}
+
+function daysSinceContact(value) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const iso = String(value).slice(0, 10);
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return Number.POSITIVE_INFINITY;
+  const then = Date.UTC(year, month - 1, day);
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((today - then) / 86_400_000);
+}
+
+function followUpTargets(leads) {
+  const stale = leads.filter(
+    (lead) =>
+      OPEN_LEAD_STATUSES.includes(lead.status) &&
+      Number(lead.score) >= HIGH_SCORE &&
+      daysSinceContact(lead.lastContacted) >= STALE_DAYS
+  );
+  if (stale.length) return stale;
+  return leads
+    .filter((lead) => OPEN_LEAD_STATUSES.includes(lead.status))
+    .sort((a, b) => Number(b.score) - Number(a.score))
+    .slice(0, 3);
+}
+
+function topOpenLeads(leads, limit = 3) {
+  return leads
+    .filter((lead) => OPEN_LEAD_STATUSES.includes(lead.status))
+    .sort((a, b) => Number(b.score) - Number(a.score))
+    .slice(0, limit);
+}
+
+function sourcePerformance(leads) {
+  const groups = new Map();
+  for (const lead of leads) {
+    const source = lead.source || "Unknown";
+    if (!groups.has(source)) {
+      groups.set(source, { source, total: 0, qualified: 0 });
+    }
+    const row = groups.get(source);
+    row.total += 1;
+    if (lead.status === "Qualified" || lead.status === "Converted") {
+      row.qualified += 1;
+    }
+  }
+  return [...groups.values()]
+    .map((row) => ({
+      ...row,
+      rate: row.total ? Math.round((row.qualified / row.total) * 100) : 0,
+    }))
+    .sort((a, b) => b.rate - a.rate || b.total - a.total);
+}
+
+function buildFollowUpDraft(targets) {
+  if (targets.length === 1) {
+    const lead = targets[0];
+    const first = lead.firstName || fullName(lead);
+    const company = lead.company || "your team";
+    return `Hi ${first},\n\nI wanted to follow up on NovaCRM for ${company}. Based on where things left off, a 20-minute architecture review would help us map the right rollout and next steps.\n\nWould tomorrow or Thursday work?\n\nBest,\nNovaCRM`;
+  }
+  return `Hi,\n\nI wanted to follow up on NovaCRM. A few high-fit accounts have gone quiet, and a short architecture review would help us pick up where we left off.\n\nWould tomorrow or Thursday work for 20 minutes?\n\nBest,\nNovaCRM`;
+}
+
+function serializeAiNote(body) {
+  const iso = new Date().toISOString().slice(0, 10);
+  return `[Nova AI | ${iso}]\n${body}`;
+}
+
+function tomorrowAt(hours, minutes) {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(hours, minutes, 0, 0);
+  return date;
 }
 
 function isSameMonth(value, reference = new Date()) {
@@ -312,6 +391,120 @@ function initials(name) {
     .toUpperCase();
 }
 
+function KanbanLeadCard({
+  lead,
+  owner,
+  isDragging,
+  onDragStart,
+  onDragEnd,
+  onOpen,
+}) {
+  const name = fullName(lead);
+  const contacted = lead.lastContacted
+    ? formatDate(lead.lastContacted)
+    : "No contact";
+
+  return (
+    <article
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      className={cn(
+        "group relative cursor-grab rounded-xl bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.05)] ring-1 ring-neutral-200/80 transition-all",
+        "hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-8px_rgba(15,23,42,0.18)] hover:ring-neutral-300",
+        "active:cursor-grabbing",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40",
+        "dark:bg-neutral-900 dark:ring-neutral-800 dark:hover:ring-neutral-700",
+        isDragging &&
+          "scale-[0.98] opacity-50 shadow-none ring-primary-300 dark:ring-primary-700"
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute inset-y-3 left-0 w-[3px] rounded-full",
+          STAGE_COLORS[lead.status] || "bg-neutral-400"
+        )}
+      />
+
+      <div className="flex items-start gap-2.5 pl-1.5">
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[11px] font-semibold text-primary-700 dark:bg-primary-950 dark:text-primary-300">
+          {initials(name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold tracking-[-0.01em] text-neutral-900 dark:text-neutral-50">
+                {name}
+              </p>
+              {lead.title ? (
+                <p className="mt-0.5 truncate text-[11px] text-neutral-500">
+                  {lead.title}
+                </p>
+              ) : null}
+            </div>
+            <ScoreRing score={lead.score} size={32} strokeWidth={3} />
+          </div>
+          {lead.company ? (
+            <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-600 dark:text-neutral-300">
+              <Building2 className="size-3 shrink-0 text-neutral-400" />
+              <span className="truncate">{lead.company}</span>
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 pl-1.5">
+        {lead.source ? (
+          <Badge
+            variant="outline"
+            className={cn(
+              "h-5 max-w-[70%] overflow-hidden border-transparent text-[10px]",
+              LEAD_SOURCE_STYLES[lead.source] || LEAD_SOURCE_STYLES.Manual
+            )}
+          >
+            <span className="truncate">{lead.source}</span>
+          </Badge>
+        ) : (
+          <span />
+        )}
+        <GripVertical className="size-3.5 text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-600" />
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2.5 pl-1.5 dark:border-neutral-800">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold">
+            {owner.initials}
+          </span>
+          <span className="truncate text-[11px] text-neutral-500">
+            {owner.name}
+          </span>
+        </div>
+        <span
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 text-[11px]",
+            lead.lastContacted
+              ? "text-neutral-400"
+              : "text-amber-600 dark:text-amber-400"
+          )}
+        >
+          <Clock className="size-3" />
+          {contacted}
+        </span>
+      </div>
+    </article>
+  );
+}
+
 export function LeadsHome() {
   const searchParams = useSearchParams();
   const [loadStatus, setLoadStatus] = useState("loading");
@@ -337,18 +530,14 @@ export function LeadsHome() {
   const [detailLeadId, setDetailLeadId] = useState(null);
   const [convertLead, setConvertLead] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [importFileName, setImportFileName] = useState("");
-  const [importPreview, setImportPreview] = useState([]);
-  const [importErrors, setImportErrors] = useState([]);
-  const [importBusy, setImportBusy] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
-  const [importDragOver, setImportDragOver] = useState(false);
-  const importInputRef = useRef(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [aiAction, setAiAction] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [followUpDraft, setFollowUpDraft] = useState("");
   const [dragId, setDragId] = useState(null);
+  const [dragOverStatus, setDragOverStatus] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -378,6 +567,15 @@ export function LeadsHome() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (loadStatus !== "ready") return;
+    window.dispatchEvent(
+      new CustomEvent("novacrm:leads-count-changed", {
+        detail: { count: leads.length },
+      })
+    );
+  }, [leads.length, loadStatus]);
 
   useEffect(() => {
     const action = searchParams.get("action");
@@ -444,6 +642,48 @@ export function LeadsHome() {
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / pageSize));
   const pageRows = filteredLeads.slice((page - 1) * pageSize, page * pageSize);
   const detailLead = leads.find((lead) => lead.id === detailLeadId) || null;
+  const draftTargets = useMemo(() => followUpTargets(leads), [leads]);
+  const nextActionLeads = useMemo(() => topOpenLeads(leads, 3), [leads]);
+  const sourceStats = useMemo(() => sourcePerformance(leads), [leads]);
+  const aiInsights = useMemo(() => {
+    const staleCount = leads.filter(
+      (lead) =>
+        OPEN_LEAD_STATUSES.includes(lead.status) &&
+        Number(lead.score) >= HIGH_SCORE &&
+        daysSinceContact(lead.lastContacted) >= STALE_DAYS
+    ).length;
+    const referral = sourceStats.find((row) => row.source === "Referral");
+    const topSource = sourceStats[0];
+    const topLead = nextActionLeads[0];
+    return [
+      {
+        id: "draft",
+        title: "Follow-up gap",
+        body: staleCount
+          ? `${staleCount} high-scoring lead${staleCount === 1 ? " has" : "s have"} not been contacted in ${STALE_DAYS} days.`
+          : "No high-scoring leads are overdue. Draft a follow-up for the top open accounts instead.",
+        action: "Draft Follow-up",
+      },
+      {
+        id: "explain",
+        title: "Source advantage",
+        body: referral
+          ? `Referral leads have a ${referral.rate}% qualification rate this month (${referral.qualified} of ${referral.total}).`
+          : topSource
+            ? `${topSource.source} is the strongest source this month at ${topSource.rate}%.`
+            : "Add more sourced leads to compare qualification rates.",
+        action: "Explain Insight",
+      },
+      {
+        id: "next",
+        title: "Next best action",
+        body: topLead
+          ? `Recommended next action: Schedule a follow-up with ${fullName(topLead)} and other top-scoring open leads.`
+          : "No open leads need a follow-up right now.",
+        action: "Recommend Next Action",
+      },
+    ];
+  }, [leads, nextActionLeads, sourceStats]);
 
   const leadStages = useMemo(
     () =>
@@ -617,107 +857,6 @@ export function LeadsHome() {
     }
   }
 
-  function resetImportState() {
-    setImportFileName("");
-    setImportPreview([]);
-    setImportErrors([]);
-    setImportBusy(false);
-    setImporting(false);
-    setImportProgress({ current: 0, total: 0 });
-    setImportDragOver(false);
-    if (importInputRef.current) importInputRef.current.value = "";
-  }
-
-  function handleImportOpenChange(nextOpen) {
-    if (!nextOpen && importing) return;
-    setImportOpen(nextOpen);
-    if (!nextOpen) resetImportState();
-  }
-
-  async function processImportFile(file) {
-    if (!file) return;
-    if (!/\.csv$/i.test(file.name) && file.type !== "text/csv") {
-      toast.error("Please upload a .csv file");
-      return;
-    }
-
-    setImportBusy(true);
-    try {
-      const text = await file.text();
-      const rows = parseCsv(text);
-      const { valid, errors } = mapCsvRowsToLeads(rows, {
-        existingEmails: leads.map((lead) => lead.email),
-        owners,
-        fallbackOwnerId: currentUserId || owners[0]?.id || "",
-      });
-      setImportFileName(file.name);
-      setImportPreview(valid);
-      setImportErrors(errors);
-      if (!valid.length && errors.length) {
-        toast.error("No valid leads found in this CSV");
-      } else if (errors.length) {
-        toast.message(
-          `${valid.length} ready to import · ${errors.length} row${errors.length === 1 ? "" : "s"} skipped`
-        );
-      } else {
-        toast.success(`${valid.length} lead${valid.length === 1 ? "" : "s"} ready to import`);
-      }
-    } catch (error) {
-      setImportFileName("");
-      setImportPreview([]);
-      setImportErrors([]);
-      toast.error(error.message || "Could not read CSV file");
-    } finally {
-      setImportBusy(false);
-    }
-  }
-
-  async function handleImportLeads() {
-    if (!importPreview.length || importing) {
-      if (!importPreview.length) {
-        toast.error("Choose a CSV with at least one valid lead");
-      }
-      return;
-    }
-    setImporting(true);
-    setImportProgress({ current: 0, total: importPreview.length });
-    try {
-      const fallbackOwnerId = currentUserId || owners[0]?.id || null;
-      const created = [];
-      for (let index = 0; index < importPreview.length; index += 1) {
-        const lead = importPreview[index];
-        const ownerId =
-          owners.some((owner) => owner.id === lead.ownerId) &&
-          /^[0-9a-f-]{36}$/i.test(lead.ownerId)
-            ? lead.ownerId
-            : fallbackOwnerId;
-        const payload = toApiLead({
-          ...lead,
-          ownerId,
-        });
-        const response = await apiFetch("/api/leads", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-        created.push(fromApiLead(response.data));
-        setImportProgress({
-          current: index + 1,
-          total: importPreview.length,
-        });
-      }
-      setLeads((prev) => [...created, ...prev]);
-      toast.success(
-        `Imported ${created.length} lead${created.length === 1 ? "" : "s"}`
-      );
-      handleImportOpenChange(false);
-    } catch (error) {
-      toast.error(error.message || "Import failed");
-    } finally {
-      setImporting(false);
-      setImportProgress({ current: 0, total: 0 });
-    }
-  }
-
   function openCreate() {
     setEditingLead(null);
     setFormOpen(true);
@@ -726,6 +865,10 @@ export function LeadsHome() {
   function openEdit(lead) {
     setEditingLead(lead);
     setFormOpen(true);
+  }
+
+  function openLead(lead) {
+    setDetailLeadId(lead.id);
   }
 
   async function updateStatus(id, status) {
@@ -748,10 +891,140 @@ export function LeadsHome() {
     }
   }
 
+  async function appendLeadNote(id, note) {
+    const current = leads.find((row) => row.id === id);
+    if (!current) return;
+    const notes = current.notes ? `${current.notes}\n\n${note}` : note;
+    const response = await apiFetch(`/api/leads/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    });
+    const saved = fromApiLead(response.data);
+    setLeads((prev) =>
+      prev.map((row) => (row.id === saved.id ? saved : row))
+    );
+    return saved;
+  }
+
+  function openAiAction(id) {
+    if (id === "draft") {
+      setFollowUpDraft(buildFollowUpDraft(draftTargets));
+    }
+    setAiAction(id);
+  }
+
+  function showLeads(targets) {
+    setSelected(targets.map((lead) => lead.id));
+    setStatusFilter("all");
+    setSourceFilter("all");
+    setQuery("");
+    setAiAction(null);
+    setAiOpen(false);
+  }
+
+  async function saveFollowUpDrafts() {
+    if (!draftTargets.length) {
+      toast.error("No open leads to follow up with");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const note = serializeAiNote(`Draft follow-up\n${followUpDraft.trim()}`);
+      await Promise.all(
+        draftTargets.map(async (lead) => {
+          await appendLeadNote(lead.id, note);
+          await apiFetch("/api/activities", {
+            method: "POST",
+            body: JSON.stringify({
+              type: "email",
+              subject: `Follow-up: ${fullName(lead)}`,
+              body: followUpDraft.trim(),
+              user_id: currentUserId || null,
+            }),
+          });
+        })
+      );
+      toast.success(
+        `Drafted follow-up for ${draftTargets.length} lead${draftTargets.length === 1 ? "" : "s"}`
+      );
+      showLeads(draftTargets);
+    } catch (error) {
+      toast.error(error.message || "Could not save follow-up drafts");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function copyFollowUpDraft() {
+    try {
+      await navigator.clipboard.writeText(followUpDraft);
+      toast.success("Draft copied");
+    } catch {
+      toast.error("Could not copy draft");
+    }
+  }
+
+  function viewReferralLeads() {
+    setSourceFilter("Referral");
+    setStatusFilter("all");
+    setQuery("");
+    setSelected([]);
+    setAiAction(null);
+    setAiOpen(false);
+    toast.success("Showing referral leads");
+  }
+
+  async function scheduleRecommendedFollowUps() {
+    if (!nextActionLeads.length) {
+      toast.error("No open leads to schedule");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const due = tomorrowAt(10, 30);
+      await Promise.all(
+        nextActionLeads.map((lead) =>
+          apiFetch("/api/tasks", {
+            method: "POST",
+            body: JSON.stringify({
+              title: `Follow-up: ${fullName(lead)}`,
+              description: `Schedule a 20-min architecture review with ${fullName(lead)}${lead.company ? ` at ${lead.company}` : ""}.`,
+              status: "todo",
+              priority: Number(lead.score) >= 80 ? "high" : "medium",
+              due_at: due.toISOString(),
+              assignee_id: currentUserId || null,
+            }),
+          })
+        )
+      );
+      toast.success(
+        `Scheduled ${nextActionLeads.length} follow-up task${nextActionLeads.length === 1 ? "" : "s"} for tomorrow, 10:30 AM`
+      );
+      setAiAction(null);
+      setAiOpen(false);
+    } catch (error) {
+      toast.error(error.message || "Could not schedule follow-ups");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  function openTopRecommendedLead() {
+    const lead = nextActionLeads[0];
+    if (!lead) {
+      toast.error("No open lead to open");
+      return;
+    }
+    setAiAction(null);
+    setAiOpen(false);
+    setDetailLeadId(lead.id);
+  }
+
   function handleDrop(status) {
     if (!dragId) return;
     updateStatus(dragId, status);
     setDragId(null);
+    setDragOverStatus(null);
     toast.success(`Moved to ${status}`);
   }
 
@@ -780,7 +1053,7 @@ export function LeadsHome() {
             type="button"
             variant="outline"
             className="h-9 rounded-lg"
-            onClick={() => handleImportOpenChange(true)}
+            onClick={() => setImportOpen(true)}
           >
             <Upload className="size-3.5" />
             Import Leads
@@ -849,38 +1122,46 @@ export function LeadsHome() {
         })}
       </div>
 
-      <Card className="py-0">
-        <CardContent className="flex flex-wrap gap-1 p-1.5">
-          {leadStages.map((stage) => {
-            const active = statusFilter === stage.id;
-            return (
-              <Button
-                key={stage.id}
-                type="button"
-                variant={active ? "secondary" : "ghost"}
-                onClick={() =>
-                  setStatusFilter((prev) =>
-                    prev === stage.id ? "all" : stage.id
-                  )
-                }
-                className={cn(
-                  "h-auto min-w-0 flex-1 flex-col items-start gap-1 rounded-lg px-2.5 py-2",
-                  active &&
-                    "bg-primary-50 text-foreground ring-1 ring-primary-200 dark:bg-primary-950/40 dark:ring-primary-800"
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <span className={cn("size-1.5 shrink-0 rounded-full", stage.color)} />
-                  <span className="truncate text-[11px] font-semibold text-muted-foreground">
-                    {stage.label}
-                  </span>
-                </span>
-                <span className="text-[16px] font-bold">{stage.count}</span>
-              </Button>
-            );
-          })}
-        </CardContent>
-      </Card>
+      <div className="min-w-0 w-full overflow-x-auto">
+      <div className="flex  flex-nowrap items-center gap-4 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 dark:border-neutral-800 dark:bg-neutral-950">
+        <span className="px-1.5 text-[11px] font-semibold tracking-[0.08em] text-neutral-400 uppercase">
+          Pipeline:
+        </span>
+        <button
+          type="button"
+          onClick={() => setStatusFilter("all")}
+          className={cn(
+            "inline-flex h-7 items-center rounded-md px-3 text-[13px] font-semibold transition-colors",
+            statusFilter === "all"
+              ? "bg-primary-600 text-white"
+              : "border border-neutral-200 text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+          )}
+        >
+          All {formatCount(leads.length)}
+        </button>
+        {leadStages.map((stage) => {
+          const active = statusFilter === stage.id;
+          return (
+            <button
+              key={stage.id}
+              type="button"
+              onClick={() => setStatusFilter(stage.id)}
+              className={cn(
+                "inline-flex h-7 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium transition-colors",
+                active
+                  ? "border-transparent bg-primary-600 text-white"
+                  : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200 dark:hover:bg-neutral-900"
+              )}
+            >
+              <span
+                className={cn("size-1.5 shrink-0 rounded-full", stage.color)}
+              />
+              {stage.label} {formatCount(stage.count)}
+            </button>
+          );
+        })}
+      </div>
+      </div>
 
       <Card className="overflow-hidden py-0">
         <div className="flex flex-col gap-3 border-b border-neutral-100 p-3 dark:border-neutral-800">
@@ -1159,7 +1440,7 @@ export function LeadsHome() {
                           <TableCell className="overflow-hidden px-3 py-2.5">
                             <button
                               type="button"
-                              onClick={() => setDetailLeadId(lead.id)}
+                              onClick={() => openLead(lead)}
                               className="flex w-full min-w-0 items-center gap-2.5 text-left"
                             >
                               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[11px] font-semibold text-primary-700">
@@ -1261,7 +1542,7 @@ export function LeadsHome() {
                               variant="ghost"
                               size="icon-sm"
                               aria-label="View lead"
-                              onClick={() => setDetailLeadId(lead.id)}
+                              onClick={() => openLead(lead)}
                             >
                               <Eye className="size-3.5" />
                             </Button>
@@ -1334,96 +1615,78 @@ export function LeadsHome() {
           </>
         ) : (
           <div className="overflow-x-auto p-3">
-            <div className="flex min-w-max gap-3">
+            <div className="flex min-h-[28rem] min-w-max items-stretch gap-3">
               {LEAD_STATUSES.map((status) => {
                 const cards = filteredLeads.filter(
                   (lead) => lead.status === status
                 );
+                const isDropTarget = dragOverStatus === status;
                 return (
-                  <Card
+                  <section
                     key={status}
-                    size="sm"
-                    className="w-[260px] shrink-0 gap-2 bg-muted/50 py-2 ring-0"
-                    onDragOver={(event) => event.preventDefault()}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setDragOverStatus(status);
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget)) {
+                        setDragOverStatus((prev) =>
+                          prev === status ? null : prev
+                        );
+                      }
+                    }}
                     onDrop={() => handleDrop(status)}
+                    className={cn(
+                      "flex w-[300px] shrink-0 flex-col rounded-xl bg-neutral-50/90 ring-1 ring-neutral-200/80 transition-colors dark:bg-neutral-950/50 dark:ring-neutral-800",
+                      isDropTarget &&
+                        "bg-primary-50/70 ring-primary-200 dark:bg-primary-950/30 dark:ring-primary-800"
+                    )}
                   >
-                    <div className="flex items-center justify-between px-2.5 py-1">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "h-auto rounded-md border-transparent",
-                          LEAD_STATUS_STYLES[status]
-                        )}
-                      >
-                        {status}
-                      </Badge>
-                      <span className="text-[11px] font-semibold text-muted-foreground">
+                    <header className="flex items-center justify-between gap-2 px-3 pt-3 pb-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className={cn(
+                            "size-2 shrink-0 rounded-full",
+                            STAGE_COLORS[status] || "bg-neutral-400"
+                          )}
+                        />
+                        <h3 className="truncate text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">
+                          {status}
+                        </h3>
+                      </div>
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white px-1.5 text-[11px] font-semibold text-neutral-500 ring-1 ring-neutral-200/80 dark:bg-neutral-900 dark:ring-neutral-700">
                         {cards.length}
                       </span>
-                    </div>
-                    <CardContent className="space-y-2 px-2">
-                      {cards.map((lead) => {
-                        const owner = ownerById(lead.ownerId, owners);
-                        return (
-                          <Card
-                            key={lead.id}
-                            size="sm"
-                            draggable
-                            onDragStart={() => setDragId(lead.id)}
-                            onDragEnd={() => setDragId(null)}
-                            onClick={() => setDetailLeadId(lead.id)}
-                            className="cursor-pointer gap-2 py-3 transition-shadow hover:shadow-md"
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                setDetailLeadId(lead.id);
-                              }
-                            }}
-                          >
-                            <CardContent className="px-3">
-                              <p className="truncate text-[13px] font-semibold">
-                                {fullName(lead)}
-                              </p>
-                              <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                                {lead.company}
-                              </p>
-                              <div className="mt-3 flex items-center justify-between gap-2">
-                                <Badge variant="secondary" className="h-auto gap-1">
-                                  <span
-                                    className={cn(
-                                      "size-1.5 rounded-full",
-                                      scoreTone(lead.score)
-                                    )}
-                                  />
-                                  {lead.score}
-                                </Badge>
-                                <span className="text-[11px] text-muted-foreground">
-                                  {lead.source}
-                                </span>
-                              </div>
-                              <div className="mt-2 flex items-center justify-between">
-                                <span className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold">
-                                  {owner.initials}
-                                </span>
-                                <span className="text-[11px] text-muted-foreground">
-                                  {lead.lastContacted
-                                    ? formatDate(lead.lastContacted)
-                                    : "No contact"}
-                                </span>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
+                    </header>
+                    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+                      {cards.map((lead) => (
+                        <KanbanLeadCard
+                          key={lead.id}
+                          lead={lead}
+                          owner={ownerById(lead.ownerId, owners)}
+                          isDragging={dragId === lead.id}
+                          onDragStart={() => setDragId(lead.id)}
+                          onDragEnd={() => {
+                            setDragId(null);
+                            setDragOverStatus(null);
+                          }}
+                          onOpen={() => openLead(lead)}
+                        />
+                      ))}
                       {cards.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-[12px] text-muted-foreground">
+                        <div
+                          className={cn(
+                            "flex flex-1 items-center justify-center rounded-xl border border-dashed px-3 py-8 text-center text-[12px] text-muted-foreground",
+                            isDropTarget
+                              ? "border-primary-300 bg-primary-50/50 text-primary-600 dark:border-primary-700 dark:bg-primary-950/20 dark:text-primary-300"
+                              : "border-neutral-200 dark:border-neutral-800"
+                          )}
+                        >
                           Drop leads here
                         </div>
                       ) : null}
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </section>
                 );
               })}
             </div>
@@ -1449,24 +1712,16 @@ export function LeadsHome() {
           if (!open) setDetailLeadId(null);
         }}
         lead={detailLead}
+        leads={leads}
         owners={owners}
-        onEdit={() => {
-          if (!detailLead) return;
-          setDetailLeadId(null);
-          openEdit(detailLead);
-        }}
+        currentUserId={currentUserId}
+        onSelectLead={setDetailLeadId}
         onConvert={() => {
           if (!detailLead) return;
           setConvertLead(detailLead);
         }}
-        onMarkLost={async () => {
-          if (!detailLead) return;
-          await updateStatus(detailLead.id, "Lost");
-          setDetailLeadId(null);
-          toast.message("Lead marked as Lost");
-        }}
         onUpdateNotes={async (id, note) => {
-          const current = leads.find((lead) => lead.id === id);
+          const current = leads.find((row) => row.id === id);
           if (!current) return;
           const notes = current.notes ? `${current.notes}\n\n${note}` : note;
           try {
@@ -1476,11 +1731,23 @@ export function LeadsHome() {
             });
             const saved = fromApiLead(response.data);
             setLeads((prev) =>
-              prev.map((lead) => (lead.id === saved.id ? saved : lead))
+              prev.map((row) => (row.id === saved.id ? saved : row))
             );
           } catch (error) {
             toast.error(error.message || "Could not save note");
+            throw error;
           }
+        }}
+        onPatchLead={async (id, payload) => {
+          const response = await apiFetch(`/api/leads/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          });
+          const saved = fromApiLead(response.data);
+          setLeads((prev) =>
+            prev.map((row) => (row.id === saved.id ? saved : row))
+          );
+          return saved;
         }}
       />
 
@@ -1523,6 +1790,7 @@ export function LeadsHome() {
                 if (!convertLead) return;
                 updateStatus(convertLead.id, "Converted");
                 setConvertLead(null);
+                setDetailLeadId(null);
                 toast.success("Lead converted");
               }}
             >
@@ -1532,210 +1800,52 @@ export function LeadsHome() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={importOpen} onOpenChange={handleImportOpenChange}>
-        <DialogContent
-          title="Import Leads"
-          description="Upload a CSV with first_name, last_name, and email columns."
-          onClose={
-            importing ? undefined : () => handleImportOpenChange(false)
+      <CsvImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        title="Import Leads"
+        description="Upload a CSV with first_name, last_name, and email columns."
+        requiredHint="Required: first_name, last_name, email"
+        entityName="lead"
+        previewColumns={[
+          {
+            header: "Name",
+            cell: (row) => `${row.firstName} ${row.lastName}`,
+          },
+          { header: "Email", cell: (row) => row.email },
+          { header: "Company", cell: (row) => row.company },
+        ]}
+        onParseFile={(file) =>
+          parseLeadCsvFile(file, {
+            existingEmails: leads.map((lead) => lead.email),
+            owners,
+            fallbackOwnerId: currentUserId || owners[0]?.id || "",
+          })
+        }
+        onImport={async (rows, { reportProgress }) => {
+          const fallbackOwnerId = currentUserId || owners[0]?.id || null;
+          const created = [];
+          for (let index = 0; index < rows.length; index += 1) {
+            const lead = rows[index];
+            const ownerId =
+              owners.some((owner) => owner.id === lead.ownerId) &&
+              /^[0-9a-f-]{36}$/i.test(lead.ownerId)
+                ? lead.ownerId
+                : fallbackOwnerId;
+            const payload = toApiLead({ ...lead, ownerId });
+            const response = await apiFetch("/api/leads", {
+              method: "POST",
+              body: JSON.stringify(payload),
+            });
+            created.push(fromApiLead(response.data));
+            reportProgress(index + 1, rows.length);
           }
-        >
-          <DialogBody className="space-y-4">
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) processImportFile(file);
-              }}
-            />
-            <div
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  importInputRef.current?.click();
-                }
-              }}
-              onClick={() => importInputRef.current?.click()}
-              onDragEnter={(event) => {
-                event.preventDefault();
-                setImportDragOver(true);
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setImportDragOver(true);
-              }}
-              onDragLeave={(event) => {
-                event.preventDefault();
-                setImportDragOver(false);
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                setImportDragOver(false);
-                const file = event.dataTransfer.files?.[0];
-                if (file) processImportFile(file);
-              }}
-              className={cn(
-                "rounded-xl border border-dashed px-4 py-8 text-center transition-colors",
-                importDragOver
-                  ? "border-primary-400 bg-primary-50/70 dark:border-primary-500 dark:bg-primary-950/40"
-                  : "border-neutral-200 dark:border-neutral-700"
-              )}
-            >
-              <FileSpreadsheet className="mx-auto size-8 text-neutral-400" />
-              <p className="mt-3 text-[13px] font-medium text-neutral-800 dark:text-neutral-100">
-                {importBusy
-                  ? "Reading CSV…"
-                  : importFileName || "Drop a CSV file here, or choose a file"}
-              </p>
-              <p className="mt-1 text-[12px] text-neutral-500">
-                Required: first_name, last_name, email
-              </p>
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={importBusy || importing}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    importInputRef.current?.click();
-                  }}
-                >
-                  Choose file
-                </Button>
-              </div>
-            </div>
-
-            {importFileName ? (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-neutral-200 px-3 py-2 text-[12px] dark:border-neutral-700">
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-neutral-800 dark:text-neutral-100">
-                    {importFileName}
-                  </p>
-                  <p className="text-neutral-500">
-                    {importPreview.length} valid · {importErrors.length} skipped
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Clear file"
-                  onClick={resetImportState}
-                >
-                  <X className="size-4" />
-                </Button>
-              </div>
-            ) : null}
-
-            {importPreview.length > 0 ? (
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-neutral-200 dark:border-neutral-700">
-                <table className="w-full text-left text-[12px]">
-                  <thead className="sticky top-0 bg-neutral-50 text-neutral-500 dark:bg-neutral-900">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Name</th>
-                      <th className="px-3 py-2 font-medium">Email</th>
-                      <th className="px-3 py-2 font-medium">Company</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importPreview.slice(0, 8).map((lead) => (
-                      <tr
-                        key={lead.id}
-                        className="border-t border-neutral-100 dark:border-neutral-800"
-                      >
-                        <td className="px-3 py-2">
-                          {lead.firstName} {lead.lastName}
-                        </td>
-                        <td className="px-3 py-2 text-neutral-600 dark:text-neutral-300">
-                          {lead.email}
-                        </td>
-                        <td className="px-3 py-2 text-neutral-600 dark:text-neutral-300">
-                          {lead.company}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {importPreview.length > 8 ? (
-                  <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
-                    +{importPreview.length - 8} more
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {importErrors.length > 0 ? (
-              <div className="max-h-28 overflow-y-auto rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
-                {importErrors.slice(0, 6).map((error) => (
-                  <p key={`${error.rowNumber}-${error.email}`}>
-                    Row {error.rowNumber}: {error.message}
-                  </p>
-                ))}
-                {importErrors.length > 6 ? (
-                  <p>+{importErrors.length - 6} more issues</p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {importing ? (
-              <div className="rounded-lg border border-primary-100 bg-primary-50/70 px-3 py-3 dark:border-primary-900 dark:bg-primary-950/40">
-                <div className="flex items-center gap-2 text-[13px] font-medium text-primary-800 dark:text-primary-200">
-                  <Loader2 className="size-4 animate-spin" />
-                  Importing {importProgress.current} of {importProgress.total}…
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-primary-100 dark:bg-primary-900">
-                  <div
-                    className="h-full rounded-full bg-primary-600 transition-all duration-200"
-                    style={{
-                      width: `${
-                        importProgress.total
-                          ? Math.round(
-                              (importProgress.current / importProgress.total) *
-                                100
-                            )
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-          </DialogBody>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={importing || importBusy}
-              onClick={() => handleImportOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              className="bg-primary-600 text-white hover:bg-primary-700"
-              disabled={!importPreview.length || importBusy || importing}
-              onClick={handleImportLeads}
-            >
-              {importing ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" />
-                  Importing {importProgress.current}/{importProgress.total}
-                </>
-              ) : importPreview.length ? (
-                `Import ${importPreview.length} lead${importPreview.length === 1 ? "" : "s"}`
-              ) : (
-                "Import leads"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          setLeads((prev) => [...created, ...prev]);
+          toast.success(
+            `Imported ${created.length} lead${created.length === 1 ? "" : "s"}`
+          );
+        }}
+      />
 
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent
@@ -1867,29 +1977,217 @@ export function LeadsHome() {
         </SheetContent>
       </Sheet>
 
-      <Sheet open={aiOpen} onOpenChange={setAiOpen}>
+      <Sheet
+        open={aiOpen}
+        onOpenChange={(open) => {
+          setAiOpen(open);
+          if (!open) setAiAction(null);
+        }}
+      >
         <SheetContent
           title="AI Lead Insights"
-          description="Recommendations only — not completed actions."
-          onClose={() => setAiOpen(false)}
+          description="Recommendations you can act on from this pipeline."
+          onClose={() => {
+            setAiOpen(false);
+            setAiAction(null);
+          }}
         >
           <SheetBody className="space-y-3">
-            {LEAD_AI_INSIGHTS.map((insight) => (
+            {aiInsights.map((insight) => (
               <Card key={insight.id} size="sm" className="py-3">
                 <CardContent className="px-3">
                   <p className="text-[13px] font-semibold">{insight.title}</p>
                   <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
                     {insight.body}
                   </p>
-                  <p className="mt-2 rounded-lg bg-muted px-2.5 py-2 text-[12px] text-muted-foreground">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-2 h-9 w-full justify-start rounded-lg bg-muted px-2.5 text-[12px] font-medium text-muted-foreground hover:bg-neutral-200 hover:text-foreground"
+                    onClick={() => openAiAction(insight.id)}
+                  >
                     {insight.action}
-                  </p>
+                  </Button>
                 </CardContent>
               </Card>
             ))}
           </SheetBody>
         </SheetContent>
       </Sheet>
+
+      <Dialog
+        open={aiAction === "draft"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Draft Follow-up"
+          description="Save this note to overdue high-fit leads, or copy it to send yourself."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {draftTargets.map((lead) => (
+                <span
+                  key={lead.id}
+                  className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-950 dark:text-primary-300"
+                >
+                  {fullName(lead)}
+                </span>
+              ))}
+            </div>
+            <Textarea
+              value={followUpDraft}
+              onChange={(event) => setFollowUpDraft(event.target.value)}
+              rows={8}
+            />
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={copyFollowUpDraft}
+            >
+              <Copy className="size-3.5" />
+              Copy
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => showLeads(draftTargets)}
+              disabled={!draftTargets.length}
+            >
+              View leads
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              disabled={aiBusy || !followUpDraft.trim() || !draftTargets.length}
+              onClick={saveFollowUpDrafts}
+            >
+              {aiBusy ? "Saving…" : "Save drafts"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={aiAction === "explain"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Source advantage"
+          description="Qualification rate by lead source in this workspace."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            {sourceStats.length ? (
+              <ul className="space-y-2">
+                {sourceStats.map((row) => (
+                  <li
+                    key={row.source}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
+                  >
+                    <div>
+                      <p className="text-[13px] font-semibold">{row.source}</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        {row.qualified} qualified of {row.total}
+                      </p>
+                    </div>
+                    <p className="text-[16px] font-bold">{row.rate}%</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-muted-foreground">
+                No source data yet.
+              </p>
+            )}
+            <p className="text-[12px] leading-5 text-muted-foreground">
+              Referral and inbound sources with a higher qualified/converted
+              share should get more of this week’s outreach.
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setAiAction(null)}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              onClick={viewReferralLeads}
+            >
+              View referral leads
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={aiAction === "next"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Recommend Next Action"
+          description="Create follow-up tasks for the highest-scoring open leads."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            {nextActionLeads.length ? (
+              <ul className="space-y-2">
+                {nextActionLeads.map((lead) => (
+                  <li
+                    key={lead.id}
+                    className="rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
+                  >
+                    <p className="text-[13px] font-semibold">
+                      {fullName(lead)}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      Score {lead.score} · {lead.status}
+                      {lead.company ? ` · ${lead.company}` : ""}
+                    </p>
+                    <p className="mt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
+                      Schedule a 20-min architecture review tomorrow at 10:30 AM.
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-muted-foreground">
+                No open leads to recommend.
+              </p>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={openTopRecommendedLead}
+              disabled={!nextActionLeads.length}
+            >
+              Open top lead
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              disabled={aiBusy || !nextActionLeads.length}
+              onClick={scheduleRecommendedFollowUps}
+            >
+              {aiBusy ? "Scheduling…" : "Schedule follow-ups"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -65,9 +65,11 @@ Seed demo users + workspace (verified, password `Password123!`):
 cd backend
 .venv\Scripts\python scripts\seed_users.py
 .venv\Scripts\python scripts\seed_organization.py
+.venv\Scripts\python scripts\seed_contacts.py
+.venv\Scripts\python scripts\seed_leads.py
 ```
 
-That keeps workspace `a8414d8d-a9fd-4880-a557-01c9ef16046c`, seeds extra demo workspaces, and attaches members.
+That keeps workspace `a8414d8d-a9fd-4880-a557-01c9ef16046c`, seeds extra demo workspaces, and attaches members. Contact and lead seeds run only when those tables are empty for that workspace.
 
 Or run `backend/supabase/seeds/001_users.sql` and `002_organization.sql` in the Supabase SQL Editor.
 

@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from psycopg import sql
+from psycopg.types.json import Jsonb
 
 from app.db import get_connection, serialize_row, serialize_rows
 
@@ -18,6 +19,12 @@ ALLOWED_TABLES = {
 }
 
 COLUMN_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _bind_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return Jsonb(value)
+    return value
 
 
 def _require_table(table: str) -> str:
@@ -79,6 +86,37 @@ def list_rows(
             return serialize_rows(cursor.fetchall())
 
 
+def count_rows(
+    table: str,
+    *,
+    organization_id: str,
+    filters: dict[str, Any] | None = None,
+) -> int:
+    table = _require_table(table)
+    clauses = [sql.SQL("organization_id = %s")]
+    params: list[Any] = [organization_id]
+
+    for key, value in (filters or {}).items():
+        if value is None or value == "":
+            continue
+        column = _require_column(key)
+        clauses.append(sql.SQL("{} = %s").format(sql.Identifier(column)))
+        params.append(value)
+
+    query = sql.SQL("select count(*)::int as count from {} where {}").format(
+        sql.Identifier(table),
+        sql.SQL(" and ").join(clauses),
+    )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(query, params)
+            row = cursor.fetchone()
+            if not row:
+                return 0
+            return int(row["count"])
+
+
 def get_row(table: str, *, organization_id: str, row_id: str) -> dict:
     table = _require_table(table)
     with get_connection() as connection:
@@ -111,7 +149,7 @@ def create_row(table: str, *, organization_id: str, payload: dict) -> dict:
                 detail=f"Invalid column: {key}",
             )
         columns.append(sql.Identifier(key))
-        values.append(value)
+        values.append(_bind_value(value))
 
     query = sql.SQL("insert into {} ({}) values ({}) returning *").format(
         sql.Identifier(table),
@@ -157,7 +195,7 @@ def update_row(
                 detail=f"Invalid column: {key}",
             )
         assignments.append(sql.SQL("{} = %s").format(sql.Identifier(key)))
-        values.append(value)
+        values.append(_bind_value(value))
 
     values.extend([organization_id, row_id])
     query = sql.SQL(

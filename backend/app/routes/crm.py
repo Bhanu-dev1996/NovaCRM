@@ -143,13 +143,22 @@ def list_resource(
     ctx: dict = Depends(require_workspace),
     limit: int = Query(100, ge=1, le=500),
     order_by: str | None = None,
+    count_only: bool = Query(False),
 ) -> dict:
     table = _table(resource)
     filters = {
         key: value
         for key, value in request.query_params.items()
-        if key not in {"limit", "order_by"}
+        if key not in {"limit", "order_by", "count_only"}
     }
+    if count_only:
+        return {
+            "count": crud.count_rows(
+                table,
+                organization_id=ctx["organization_id"],
+                filters=filters,
+            )
+        }
     rows = crud.list_rows(
         table,
         organization_id=ctx["organization_id"],

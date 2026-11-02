@@ -30,16 +30,16 @@ export function Dialog({ open, onOpenChange, children }) {
   if (!open || !mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80]">
+    <div className="fixed inset-0 z-[110]">
       <button
         type="button"
         aria-label="Close dialog"
         className="absolute inset-0 bg-neutral-900/40"
         onClick={() => onOpenChange?.(false)}
       />
-      <div className="absolute inset-0 overflow-y-auto p-4">
+      <div className="pointer-events-none absolute inset-0 overflow-y-auto p-4 sm:p-6">
         <div className="flex min-h-full items-center justify-center">
-          {children}
+          <div className="pointer-events-auto w-full">{children}</div>
         </div>
       </div>
     </div>,
@@ -53,14 +53,24 @@ export function DialogContent({
   title,
   description,
   onClose,
+  maxWidth = 512,
+  style,
 }) {
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={title}
+      style={{
+        boxSizing: "border-box",
+        width: `${maxWidth}px`,
+        maxWidth: "calc(100vw - 2rem)",
+        marginLeft: "auto",
+        marginRight: "auto",
+        ...style,
+      }}
       className={cn(
-        "relative z-10 w-[min(36rem,calc(100vw-2rem))] shrink-0 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-950",
+        "overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-950",
         className
       )}
     >

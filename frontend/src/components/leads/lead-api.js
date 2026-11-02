@@ -15,6 +15,20 @@ export function mapMemberToOwner(member) {
   };
 }
 
+function idList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((id) => String(id || "")).filter(Boolean);
+}
+
+export function parseLeadRelated(related) {
+  const raw = related && typeof related === "object" ? related : {};
+  return {
+    companyIds: idList(raw.companyIds || raw.company_ids),
+    contactIds: idList(raw.contactIds || raw.contact_ids),
+    dealIds: idList(raw.dealIds || raw.deal_ids),
+  };
+}
+
 export function fromApiLead(row) {
   return {
     id: row.id,
@@ -23,6 +37,7 @@ export function fromApiLead(row) {
     email: row.email || "",
     phone: row.phone || "",
     company: row.company_name || "",
+    companyId: row.company_id || "",
     title: row.title || "",
     source: row.source || "Manual",
     industry: row.industry || "",
@@ -34,6 +49,9 @@ export function fromApiLead(row) {
       ? String(row.last_contacted_at).slice(0, 10)
       : null,
     createdAt: row.created_at ? String(row.created_at).slice(0, 10) : "",
+    convertedContactId: row.converted_contact_id || "",
+    convertedDealId: row.converted_deal_id || "",
+    related: parseLeadRelated(row.related),
   };
 }
 

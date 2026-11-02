@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Activity,
@@ -21,6 +21,7 @@ import {
   FolderKanban,
   Headphones,
   LayoutDashboard,
+  Loader2,
   LogOut,
   Mail,
   Megaphone,
@@ -112,7 +113,7 @@ const NAV_GROUPS = [
     label: "Workspace",
     items: [
       { href: "/", label: "Overview", icon: LayoutDashboard },
-      { href: "/leads", label: "Leads", icon: UserRound, badge: "12" },
+      { href: "/leads", label: "Leads", icon: UserRound },
       { href: "/contacts", label: "Contacts", icon: Users },
       { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/deals", label: "Deals", icon: Briefcase },
@@ -141,6 +142,18 @@ const NAV_GROUPS = [
 function isActivePath(pathname, href) {
   if (href === "/") return pathname === "/";
   return pathname.startsWith(href);
+}
+
+function navGroupsWithLeadsCount(groups, leadsCount) {
+  if (leadsCount == null) return groups;
+  return groups.map((group) => ({
+    ...group,
+    items: group.items.map((item) =>
+      item.href === "/leads"
+        ? { ...item, badge: String(leadsCount) }
+        : item
+    ),
+  }));
 }
 
 function NavLink({ item, active, collapsed, onNavigate }) {
@@ -564,7 +577,10 @@ function Sidebar({
   user,
   collapsed,
   onNavigate,
+  leadsCount,
 }) {
+  const navGroups = navGroupsWithLeadsCount(NAV_GROUPS, leadsCount);
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden border-r border-neutral-200 bg-[#fbfbfd]">
       <div
@@ -609,7 +625,7 @@ function Sidebar({
               collapsed ? "px-2.5 pr-4" : "px-3.5 pr-4"
             )}
           >
-            {NAV_GROUPS.map((group) => (
+            {navGroups.map((group) => (
               <div key={group.label} className="space-y-1">
                 {!collapsed ? (
                   <p className="px-3 pb-1 text-[10px] font-semibold tracking-[0.14em] text-neutral-400 uppercase">
@@ -669,7 +685,32 @@ function Sidebar({
   );
 }
 
+function WorkspaceLoader({ className = "min-h-dvh" }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-center bg-neutral-50 dark:bg-neutral-950",
+        className
+      )}
+    >
+      <Loader2
+        className="size-8 animate-spin text-primary-600"
+        aria-label="Loading workspace"
+        role="status"
+      />
+    </div>
+  );
+}
+
 export function AppShell({ children }) {
+  return (
+    <Suspense fallback={<WorkspaceLoader />}>
+      <AppShellContent>{children}</AppShellContent>
+    </Suspense>
+  );
+}
+
+function AppShellContent({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState(null);
@@ -682,6 +723,7 @@ export function AppShell({ children }) {
   const [signingOut, setSigningOut] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [leadsCount, setLeadsCount] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -706,6 +748,39 @@ export function AppShell({ children }) {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    let cancelled = false;
+    async function loadLeadsCount() {
+      try {
+        const response = await apiFetch("/api/leads?count_only=true");
+        if (!cancelled) setLeadsCount(response.count ?? 0);
+      } catch {
+        if (!cancelled) setLeadsCount(null);
+      }
+    }
+    loadLeadsCount();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, user, workspace?.id]);
+
+  useEffect(() => {
+    function onLeadsCountChanged(event) {
+      const count = event.detail?.count;
+      if (typeof count === "number" && Number.isFinite(count)) {
+        setLeadsCount(count);
+      }
+    }
+    window.addEventListener("novacrm:leads-count-changed", onLeadsCountChanged);
+    return () => {
+      window.removeEventListener(
+        "novacrm:leads-count-changed",
+        onLeadsCountChanged
+      );
+    };
+  }, []);
 
   async function handleSwitchWorkspace(organizationId) {
     if (!organizationId || switchingId) return;
@@ -785,9 +860,7 @@ export function AppShell({ children }) {
       )}
     >
       {!ready ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-50 text-[14px] text-neutral-500">
-          Loading your workspace…
-        </div>
+        <WorkspaceLoader className="fixed inset-0 z-50" />
       ) : null}
 
       <aside
@@ -806,6 +879,7 @@ export function AppShell({ children }) {
           onSwitchWorkspace={handleSwitchWorkspace}
           user={user}
           collapsed={collapsed}
+          leadsCount={leadsCount}
         />
       </aside>
 
@@ -835,6 +909,7 @@ export function AppShell({ children }) {
               user={user}
               collapsed={false}
               onNavigate={() => setMobileOpen(false)}
+              leadsCount={leadsCount}
             />
           </aside>
         </div>

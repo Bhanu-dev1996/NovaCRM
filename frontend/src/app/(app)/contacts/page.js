@@ -1,7 +1,6 @@
 ﻿import { Suspense } from "react";
 
-import { ContactsHome } from "@/components/contacts/contacts-home";
-import { CrmSkeleton } from "@/components/crm/crm-shared";
+import { ContactsHome, ContactsSkeleton } from "@/components/contacts/contacts-home";
 import { siteConfig } from "@/config/site";
 
 export const metadata = {
@@ -11,7 +10,7 @@ export const metadata = {
 
 export default function ContactsPage() {
   return (
-    <Suspense fallback={<CrmSkeleton />}>
+    <Suspense fallback={<ContactsSkeleton />}>
       <ContactsHome />
     </Suspense>
   );

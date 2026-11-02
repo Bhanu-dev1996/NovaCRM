@@ -15,6 +15,9 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 # Direct Postgres connection (Supabase → Project Settings → Database → URI)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
+# Phone country list source (defaults to https://countries.dev/countries).
+COUNTRIES_API_URL = os.getenv("COUNTRIES_API_URL", "").strip()
+
 # Transactional email (pick one): Resend API or SMTP
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 EMAIL_FROM = os.getenv("EMAIL_FROM", "").strip()

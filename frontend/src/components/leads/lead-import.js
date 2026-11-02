@@ -208,6 +208,15 @@ export function mapCsvRowsToLeads(
   return { valid, errors };
 }
 
+export async function parseLeadCsvFile(
+  file,
+  { existingEmails = [], owners = LEAD_OWNERS, fallbackOwnerId = "" } = {}
+) {
+  const text = await file.text();
+  const rows = parseCsv(text);
+  return mapCsvRowsToLeads(rows, { existingEmails, owners, fallbackOwnerId });
+}
+
 export function downloadLeadCsvTemplate() {
   const blob = new Blob([LEAD_CSV_TEMPLATE], {
     type: "text/csv;charset=utf-8;",
