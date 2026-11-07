@@ -6,7 +6,7 @@ import { siteConfig } from "@/config/site";
 
 export const metadata = {
   title: "Companies",
-  description: `Manage accounts and organizations in ${siteConfig.name}.`,
+  description: `Manage organizations, business relationships, and company accounts in ${siteConfig.name}.`,
 };
 
 export default function CompaniesPage() {

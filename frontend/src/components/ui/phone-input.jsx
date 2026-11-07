@@ -151,13 +151,10 @@ function CountryCodeSelect({
         {loading ? (
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
         ) : (
-          <span className="text-base leading-none" aria-hidden="true">
-            {selected.flag}
+          <span className="text-[13px] font-medium text-foreground tabular-nums">
+            {selected.dialCode}
           </span>
         )}
-        <span className="text-sm font-medium text-foreground">
-          {selected.dialCode}
-        </span>
         <ChevronsUpDown className="size-3.5 text-muted-foreground" />
       </PopoverTrigger>
       <PopoverContent
@@ -290,7 +287,7 @@ export function PhoneInput({
         onChange={(event) => updateNational(event.target.value)}
         onBlur={onBlur}
         placeholder={nationalPlaceholder}
-        className="min-w-0 flex-1 bg-transparent px-2.5 text-sm outline-none placeholder:text-muted-foreground"
+        className="min-w-0 flex-1 bg-transparent px-2.5 text-[13px] font-normal outline-none placeholder:text-muted-foreground"
         aria-label="Phone number"
       />
     </div>

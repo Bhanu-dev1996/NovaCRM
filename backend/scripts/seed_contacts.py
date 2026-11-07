@@ -11,17 +11,14 @@ import psycopg
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from scripts.company_seed_data import (  # noqa: E402
+    OWNER_EMAIL_BY_KEY,
+    company_record_for_name,
+)
+
 load_dotenv(ROOT / ".env")
 
 PRIMARY_ORG_ID = "a8414d8d-a9fd-4880-a557-01c9ef16046c"
-
-OWNER_EMAIL_BY_KEY = {
-    "alex": "alex.morgan@novacrm.dev",
-    "jordan": "jordan.lee@novacrm.dev",
-    "sam": "sam.rivera@novacrm.dev",
-    "casey": "casey.nguyen@novacrm.dev",
-    "riley": "riley.chen@novacrm.dev",
-}
 
 # Aligned with frontend DEMO_CONTACTS enrichments (contacts-data.js)
 SEED_CONTACTS = [
@@ -137,6 +134,8 @@ SEED_CONTACTS = [
 
 
 def _company_id(conn, organization_id: str, name: str, owner_id: str) -> str:
+    now = datetime.now(timezone.utc)
+    seed = company_record_for_name(name) or {}
     row = conn.execute(
         """
         select id from companies
@@ -146,16 +145,52 @@ def _company_id(conn, organization_id: str, name: str, owner_id: str) -> str:
         (organization_id, name),
     ).fetchone()
     if row:
+        conn.execute(
+            """
+            update companies set
+              domain = coalesce(%s, domain),
+              website = coalesce(%s, website),
+              industry = coalesce(%s, industry),
+              size = coalesce(%s, size),
+              phone = coalesce(%s, phone),
+              owner_id = coalesce(%s, owner_id),
+              updated_at = %s
+            where id = %s
+            """,
+            (
+                seed.get("domain"),
+                seed.get("website"),
+                seed.get("industry"),
+                seed.get("size"),
+                seed.get("phone"),
+                owner_id,
+                now,
+                row[0],
+            ),
+        )
         return row[0]
 
-    now = datetime.now(timezone.utc)
     row = conn.execute(
         """
-        insert into companies (organization_id, name, owner_id, created_at, updated_at)
-        values (%s, %s, %s, %s, %s)
+        insert into companies (
+          organization_id, name, domain, website, industry, size, phone,
+          owner_id, created_at, updated_at
+        )
+        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         returning id
         """,
-        (organization_id, name, owner_id, now, now),
+        (
+            organization_id,
+            name,
+            seed.get("domain"),
+            seed.get("website"),
+            seed.get("industry"),
+            seed.get("size"),
+            seed.get("phone"),
+            owner_id,
+            now,
+            now,
+        ),
     ).fetchone()
     return row[0]
 

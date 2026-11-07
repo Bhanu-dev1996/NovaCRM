@@ -144,18 +144,6 @@ function isActivePath(pathname, href) {
   return pathname.startsWith(href);
 }
 
-function navGroupsWithLeadsCount(groups, leadsCount) {
-  if (leadsCount == null) return groups;
-  return groups.map((group) => ({
-    ...group,
-    items: group.items.map((item) =>
-      item.href === "/leads"
-        ? { ...item, badge: String(leadsCount) }
-        : item
-    ),
-  }));
-}
-
 function NavLink({ item, active, collapsed, onNavigate }) {
   const Icon = item.icon;
   return (
@@ -577,10 +565,7 @@ function Sidebar({
   user,
   collapsed,
   onNavigate,
-  leadsCount,
 }) {
-  const navGroups = navGroupsWithLeadsCount(NAV_GROUPS, leadsCount);
-
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden border-r border-neutral-200 bg-[#fbfbfd]">
       <div
@@ -625,7 +610,7 @@ function Sidebar({
               collapsed ? "px-2.5 pr-4" : "px-3.5 pr-4"
             )}
           >
-            {navGroups.map((group) => (
+            {NAV_GROUPS.map((group) => (
               <div key={group.label} className="space-y-1">
                 {!collapsed ? (
                   <p className="px-3 pb-1 text-[10px] font-semibold tracking-[0.14em] text-neutral-400 uppercase">
@@ -723,8 +708,6 @@ function AppShellContent({ children }) {
   const [signingOut, setSigningOut] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [leadsCount, setLeadsCount] = useState(null);
-
   useEffect(() => {
     let cancelled = false;
     async function boot() {
@@ -748,39 +731,6 @@ function AppShellContent({ children }) {
       cancelled = true;
     };
   }, [router]);
-
-  useEffect(() => {
-    if (loading || !user) return;
-    let cancelled = false;
-    async function loadLeadsCount() {
-      try {
-        const response = await apiFetch("/api/leads?count_only=true");
-        if (!cancelled) setLeadsCount(response.count ?? 0);
-      } catch {
-        if (!cancelled) setLeadsCount(null);
-      }
-    }
-    loadLeadsCount();
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, user, workspace?.id]);
-
-  useEffect(() => {
-    function onLeadsCountChanged(event) {
-      const count = event.detail?.count;
-      if (typeof count === "number" && Number.isFinite(count)) {
-        setLeadsCount(count);
-      }
-    }
-    window.addEventListener("novacrm:leads-count-changed", onLeadsCountChanged);
-    return () => {
-      window.removeEventListener(
-        "novacrm:leads-count-changed",
-        onLeadsCountChanged
-      );
-    };
-  }, []);
 
   async function handleSwitchWorkspace(organizationId) {
     if (!organizationId || switchingId) return;
@@ -879,7 +829,6 @@ function AppShellContent({ children }) {
           onSwitchWorkspace={handleSwitchWorkspace}
           user={user}
           collapsed={collapsed}
-          leadsCount={leadsCount}
         />
       </aside>
 
@@ -909,7 +858,6 @@ function AppShellContent({ children }) {
               user={user}
               collapsed={false}
               onNavigate={() => setMobileOpen(false)}
-              leadsCount={leadsCount}
             />
           </aside>
         </div>

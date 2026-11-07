@@ -1,9 +1,7 @@
 import { Suspense } from "react";
 
-import {
-  CompanyDetailSkeleton,
-  CompanyDetailView,
-} from "@/components/companies/company-detail-view";
+import { CompanyDetailView } from "@/components/companies/company-detail-view";
+import { CompanyDetailSkeleton } from "@/components/companies/company-detail-view-skeleton";
 import { siteConfig } from "@/config/site";
 
 export async function generateMetadata({ params }) {
