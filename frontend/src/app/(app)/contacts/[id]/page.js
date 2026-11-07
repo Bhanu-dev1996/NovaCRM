@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 
-import { ContactDetailView } from "@/components/contacts/contact-detail-view";
-import { ContactsSkeleton } from "@/components/contacts/contacts-home";
+import {
+  ContactDetailSkeleton,
+  ContactDetailView,
+} from "@/components/contacts/contact-detail-view";
 import { siteConfig } from "@/config/site";
 
 export async function generateMetadata({ params }) {
@@ -12,11 +14,15 @@ export async function generateMetadata({ params }) {
   };
 }
 
-export default async function ContactDetailPage({ params }) {
+async function ContactDetailContent({ params }) {
   const { id } = await params;
+  return <ContactDetailView contactId={id} />;
+}
+
+export default function ContactDetailPage({ params }) {
   return (
-    <Suspense fallback={<ContactsSkeleton />}>
-      <ContactDetailView contactId={id} />
+    <Suspense fallback={<ContactDetailSkeleton />}>
+      <ContactDetailContent params={params} />
     </Suspense>
   );
 }

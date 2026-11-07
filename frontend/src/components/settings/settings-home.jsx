@@ -44,6 +44,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { apiFetch } from "@/lib/api";
+import { crmType } from "@/lib/crm-typography";
 import { cn } from "@/lib/utils";
 
 const INDUSTRIES = [
@@ -319,7 +320,7 @@ export function SettingsHome() {
   return (
     <div className="mx-auto flex w-full max-w-[960px] flex-col gap-5">
       <div>
-        <nav className="mb-2 flex items-center gap-1.5 text-[12px] text-primary-500/80">
+        <nav className={cn("mb-2 flex items-center gap-1.5", crmType.breadcrumb)}>
           <span>Workspace</span>
           <span className="text-primary-300">/</span>
           <span className="font-medium text-primary-700 dark:text-primary-300">

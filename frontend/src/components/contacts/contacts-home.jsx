@@ -1,22 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import {
-  Activity,
   ArrowDownUp,
   BadgeCheck,
+  Building2,
   Columns3,
+  Copy,
   Download,
+  Eye,
   Filter,
   LayoutGrid,
   LayoutList,
-  MoreHorizontal,
+  Mail,
+  Phone,
   Plus,
+  Sparkles,
+  SquarePen,
   Search,
-  Settings2,
   Trash2,
   Upload,
   UserPlus,
@@ -24,6 +29,14 @@ import {
   X,
 } from "lucide-react";
 
+import {
+  buildContactAiInsights,
+  buildOutreachDraft,
+  championContacts,
+  qbrTargets,
+  reEngagementTargets,
+  serializeContactAiNote,
+} from "@/components/contacts/contact-ai-insights";
 import { ContactFormDrawer } from "@/components/contacts/contact-form-drawer";
 import {
   fromApiContact,
@@ -34,21 +47,20 @@ import {
 import {
   CONTACT_TYPES,
   CONTACT_TYPE_STYLES,
+  CONTACT_KPI_DEFINITIONS,
   CONTACT_OWNERS,
-  KPI_CARD_VALUES,
   LIFECYCLE_STATUSES,
   LIFECYCLE_STYLES,
   fullName,
   initials,
   ownerById,
-  tagStyleAt,
 } from "@/components/contacts/contacts-data";
 import { parseContactCsvFile } from "@/components/contacts/contact-import";
 import { CsvImportDialog } from "@/components/shared/csv-import-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogBody,
@@ -62,6 +74,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -86,31 +99,246 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiFetch } from "@/lib/api";
+import { crmType } from "@/lib/crm-typography";
 import { cn } from "@/lib/utils";
 
 const ALL_COLUMNS = [
-  { id: "name", label: "Name" },
+  { id: "name", label: "Contact" },
+  { id: "title", label: "Job Title" },
   { id: "company", label: "Company" },
-  { id: "title", label: "Job title" },
-  { id: "type", label: "Type" },
-  { id: "lifecycle", label: "Lifecycle" },
+  { id: "phone", label: "Phone" },
+  { id: "type", label: "Contact Type" },
   { id: "owner", label: "Owner" },
-  { id: "tags", label: "Tags" },
-  { id: "lastActivity", label: "Last activity" },
-  { id: "createdAt", label: "Created" },
+  { id: "createdAt", label: "Created Date" },
 ];
 
 const DEFAULT_VISIBLE_COLUMNS = [
   "name",
-  "company",
   "title",
+  "company",
+  "phone",
   "type",
-  "lifecycle",
   "owner",
-  "lastActivity",
+  "createdAt",
 ];
 
-const PAGE_SIZES = [10, 20, 40, 50];
+const PAGE_SIZES = [10, 20, 40, 50, 100];
+
+const CONTACT_TYPE_ACCENT = {
+  Customer: "bg-emerald-500",
+  Prospect: "bg-sky-500",
+  Partner: "bg-violet-500",
+  Vendor: "bg-amber-500",
+  Investor: "bg-blue-500",
+  Other: "bg-neutral-400",
+};
+
+function ContactGridCard({
+  contact,
+  owner,
+  companyName,
+  onOpen,
+  onEdit,
+  onDelete,
+}) {
+  const name = fullName(contact);
+  const company = companyName || "No company linked";
+
+  function handleCardClick(event) {
+    if (event.target.closest("[data-card-action]")) return;
+    onOpen();
+  }
+
+  function handleCardKeyDown(event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    if (event.target.closest("[data-card-action]")) return;
+    event.preventDefault();
+    onOpen();
+  }
+
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      className={cn(
+        "group relative flex min-h-[188px] flex-col rounded-xl bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.05)] ring-1 ring-neutral-200/80 transition-all",
+        "hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-8px_rgba(15,23,42,0.18)] hover:ring-neutral-300",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40",
+        "dark:bg-neutral-900 dark:ring-neutral-800 dark:hover:ring-neutral-700"
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-3 left-0 w-[3px] rounded-full",
+          CONTACT_TYPE_ACCENT[contact.contactType] || CONTACT_TYPE_ACCENT.Other
+        )}
+      />
+
+      <div className="flex items-center gap-2.5 pl-4">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[11px] font-semibold text-primary-700 dark:bg-primary-950 dark:text-primary-300">
+          {initials(contact)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold tracking-[-0.01em] text-neutral-900 dark:text-neutral-50">
+                {name}
+              </p>
+            </div>
+            <div
+              className="flex shrink-0 items-center gap-0.5 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+              data-card-action
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                aria-label="Delete contact"
+                onClick={onDelete}
+              >
+                <Trash2 className="size-3.5 text-destructive" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-7"
+                aria-label="Edit contact"
+                onClick={onEdit}
+              >
+                <SquarePen className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2.5 space-y-1.5 pl-4">
+        <p className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-600 dark:text-neutral-300">
+          <Building2 className="size-3 shrink-0 text-neutral-400" />
+          <span className="truncate">{company}</span>
+        </p>
+        {contact.email ? (
+          <p className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-600 dark:text-neutral-300">
+            <Mail className="size-3 shrink-0 text-neutral-400" />
+            <span className="truncate">{contact.email}</span>
+          </p>
+        ) : null}
+        {contact.phone ? (
+          <p className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-600 dark:text-neutral-300">
+            <Phone className="size-3 shrink-0 text-neutral-400" />
+            <span className="truncate">{contact.phone}</span>
+          </p>
+        ) : null}
+      </div>
+
+      <div className="mt-3 mb-2 flex flex-wrap items-center gap-1.5 pl-4">
+        <Badge
+          variant="outline"
+          title={contact.contactType}
+          className={cn(
+            "h-5 max-w-full overflow-hidden border-transparent text-[10px]",
+            CONTACT_TYPE_STYLES[contact.contactType] || CONTACT_TYPE_STYLES.Other
+          )}
+        >
+          <span className="truncate">{contact.contactType || "Other"}</span>
+        </Badge>
+        {contact.lifecycle ? (
+          <Badge
+            variant="outline"
+            title={contact.lifecycle}
+            className={cn(
+              "h-5 max-w-full overflow-hidden border-transparent text-[10px]",
+              LIFECYCLE_STYLES[contact.lifecycle] || LIFECYCLE_STYLES.Inactive
+            )}
+          >
+            <span className="truncate">{contact.lifecycle}</span>
+          </Badge>
+        ) : null}
+      </div>
+
+      <div className="mt-auto flex items-center justify-between gap-2 border-t border-neutral-100 pt-2.5 pl-4 dark:border-neutral-800">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold">
+            {owner.initials}
+          </span>
+          <span className="truncate text-[11px] text-neutral-500">
+            {owner.name}
+          </span>
+        </div>
+        <span className="shrink-0 text-[11px] text-neutral-400 tabular-nums">
+          {formatDate(contact.createdAt)}
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function TruncateText({ value, className }) {
+  const text = value || "—";
+  const ref = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+
+  function showTooltip() {
+    const node = ref.current;
+    if (!node || !text || text === "—") return;
+    const rect = node.getBoundingClientRect();
+    setTooltip({
+      text,
+      top: Math.max(8, rect.top - 8),
+      left: Math.min(
+        window.innerWidth - 16,
+        Math.max(16, rect.left + rect.width / 2)
+      ),
+    });
+  }
+
+  return (
+    <>
+      <span
+        ref={ref}
+        className={cn("block w-full min-w-0 truncate", className)}
+        onMouseEnter={showTooltip}
+        onMouseLeave={() => setTooltip(null)}
+      >
+        {text}
+      </span>
+      {tooltip
+        ? createPortal(
+            <div
+              role="tooltip"
+              style={{
+                position: "fixed",
+                top: tooltip.top,
+                left: tooltip.left,
+                transform: "translate(-50%, -100%)",
+                zIndex: 9999,
+                width: "max-content",
+                maxWidth: "min(20rem, calc(100vw - 24px))",
+                padding: "6px 10px",
+                borderRadius: "6px",
+                backgroundColor: "#0f172a",
+                color: "#fff",
+                fontSize: "12px",
+                lineHeight: "1.35",
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+                boxShadow: "0 8px 24px rgba(15, 23, 42, 0.18)",
+              }}
+            >
+              {tooltip.text}
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
 
 function formatCount(value) {
   return new Intl.NumberFormat("en-US").format(value);
@@ -133,15 +361,57 @@ function summaryIcon(name) {
       return UserPlus;
     case "badge-check":
       return BadgeCheck;
-    case "activity":
-      return Activity;
+    case "building":
+      return Building2;
     default:
       return Users;
   }
 }
 
+function computeContactStats(rows) {
+  const now = new Date();
+  const month = now.getMonth();
+  const year = now.getFullYear();
+  let newThisMonth = 0;
+  let active = 0;
+  let withoutCompany = 0;
+
+  for (const contact of rows) {
+    if (contact.createdAt) {
+      const created = new Date(contact.createdAt);
+      if (
+        !Number.isNaN(created.getTime()) &&
+        created.getMonth() === month &&
+        created.getFullYear() === year
+      ) {
+        newThisMonth += 1;
+      }
+    }
+    if (contact.lifecycle === "Active" || contact.lifecycle === "Customer") {
+      active += 1;
+    }
+    if (!contact.companyId) {
+      withoutCompany += 1;
+    }
+  }
+
+  return {
+    total: rows.length,
+    newThisMonth,
+    active,
+    withoutCompany,
+  };
+}
+
 function SkeletonBlock({ className }) {
-  return <div className={cn("animate-pulse bg-muted", className)} />;
+  return (
+    <div
+      className={cn(
+        "animate-pulse rounded-xl bg-neutral-200/70 dark:bg-neutral-800",
+        className
+      )}
+    />
+  );
 }
 
 function SummaryCardSkeleton() {
@@ -177,6 +447,7 @@ export function ContactsSkeleton() {
         <div className="flex flex-wrap items-center gap-2">
           <SkeletonBlock className="h-9 w-[118px] rounded-lg" />
           <SkeletonBlock className="h-9 w-9 rounded-lg" />
+          <SkeletonBlock className="h-9 w-9 rounded-lg" />
           <SkeletonBlock className="h-9 w-[120px] rounded-lg" />
         </div>
       </div>
@@ -185,11 +456,67 @@ export function ContactsSkeleton() {
           <SummaryCardSkeleton key={i} />
         ))}
       </div>
+
       <Card className="overflow-hidden py-0">
-        <div className="border-b p-3">
-          <SkeletonBlock className="h-9 w-full max-w-md rounded-lg" />
+        <div className="flex flex-col gap-3 border-b border-neutral-100 p-3 dark:border-neutral-800">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <SkeletonBlock className="h-9 min-w-[280px] max-w-xl flex-1 rounded-lg" />
+              <SkeletonBlock className="h-9 w-[88px] rounded-lg" />
+              <SkeletonBlock className="h-9 w-[72px] rounded-lg" />
+              <SkeletonBlock className="h-9 w-[96px] rounded-lg" />
+            </div>
+            <SkeletonBlock className="h-9 w-[160px] rounded-lg" />
+          </div>
         </div>
-        <SkeletonBlock className="h-64 w-full rounded-none" />
+
+        <div className="hidden border-b border-neutral-100 px-3 py-2.5 md:flex dark:border-neutral-800">
+          <div className="flex w-full items-center gap-4">
+            <SkeletonBlock className="size-4 rounded" />
+            <SkeletonBlock className="h-3 w-24 rounded-md" />
+            <SkeletonBlock className="h-3 w-20 rounded-md" />
+            <SkeletonBlock className="h-3 w-16 rounded-md" />
+            <SkeletonBlock className="h-3 w-14 rounded-md" />
+            <SkeletonBlock className="h-3 w-16 rounded-md" />
+            <SkeletonBlock className="h-3 w-20 rounded-md" />
+            <SkeletonBlock className="h-3 w-16 rounded-md" />
+            <SkeletonBlock className="ml-auto h-3 w-12 rounded-md" />
+          </div>
+        </div>
+
+        <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-3 px-3 py-3.5 md:gap-4"
+            >
+              <SkeletonBlock className="hidden size-4 rounded md:block" />
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <SkeletonBlock className="size-8 shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <SkeletonBlock className="h-3.5 w-36 max-w-full rounded-md" />
+                  <SkeletonBlock className="h-3 w-44 max-w-full rounded-md" />
+                </div>
+              </div>
+              <SkeletonBlock className="hidden h-3 w-24 rounded-md lg:block" />
+              <SkeletonBlock className="hidden h-3 w-20 rounded-md md:block" />
+              <SkeletonBlock className="hidden h-3 w-28 rounded-md xl:block" />
+              <SkeletonBlock className="hidden h-6 w-16 rounded-full sm:block" />
+              <SkeletonBlock className="hidden h-3 w-20 rounded-md md:block" />
+              <SkeletonBlock className="hidden h-3 w-16 rounded-md lg:block" />
+              <SkeletonBlock className="size-8 shrink-0 rounded-lg" />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-neutral-100 px-3 py-3 dark:border-neutral-800">
+          <SkeletonBlock className="h-3 w-28 rounded-md" />
+          <div className="flex items-center gap-2">
+            <SkeletonBlock className="h-8 w-8 rounded-lg" />
+            <SkeletonBlock className="h-8 w-16 rounded-lg" />
+            <SkeletonBlock className="h-8 w-8 rounded-lg" />
+          </div>
+        </div>
       </Card>
     </div>
   );
@@ -222,7 +549,11 @@ export function ContactsHome() {
   const [editingContact, setEditingContact] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [deals, setDeals] = useState([]);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiAction, setAiAction] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [outreachDraft, setOutreachDraft] = useState("");
   const companyMap = useMemo(
     () => Object.fromEntries(companies.map((c) => [c.id, c.name])),
     [companies]
@@ -233,10 +564,11 @@ export function ContactsHome() {
     async function load() {
       setLoadStatus("loading");
       try {
-        const [ws, list, companyList, members] = await Promise.all([
+        const [ws, list, companyList, dealList, members] = await Promise.all([
           apiFetch("/api/workspace"),
           apiFetch("/api/contacts?order_by=created_at&limit=500"),
           apiFetch("/api/companies?order_by=name&limit=200"),
+          apiFetch("/api/deals?order_by=created_at&limit=200"),
           apiFetch("/api/workspace/members"),
         ]);
         if (cancelled) return;
@@ -244,6 +576,7 @@ export function ContactsHome() {
         setOwners(mappedOwners.length ? mappedOwners : CONTACT_OWNERS);
         setCurrentUserId(ws.user?.id || "");
         setCompanies(companyList.data || []);
+        setDeals(dealList.data || []);
         setContacts((list.data || []).map((row) => fromApiContact(row)));
         setLoadStatus("ready");
       } catch (error) {
@@ -335,6 +668,17 @@ export function ContactsHome() {
     page * pageSize
   );
 
+  const outreachTargets = useMemo(
+    () => reEngagementTargets(contacts, deals),
+    [contacts, deals]
+  );
+  const championRows = useMemo(() => championContacts(contacts), [contacts]);
+  const qbrContacts = useMemo(() => qbrTargets(contacts), [contacts]);
+  const aiInsights = useMemo(
+    () => buildContactAiInsights(contacts, deals),
+    [contacts, deals]
+  );
+
   function resetPage() {
     setPage(1);
   }
@@ -355,6 +699,113 @@ export function ContactsHome() {
 
   function openContact(contact) {
     router.push(`/contacts/${contact.id}`);
+  }
+
+  function openEdit(contact) {
+    setEditingContact(contact);
+    setFormOpen(true);
+  }
+
+  async function deleteContact(contact) {
+    try {
+      await apiFetch(`/api/contacts/${contact.id}`, { method: "DELETE" });
+      setContacts((prev) => prev.filter((row) => row.id !== contact.id));
+      setSelected((prev) => prev.filter((id) => id !== contact.id));
+      toast.success("Contact removed");
+    } catch (error) {
+      toast.error(error.message || "Could not delete contact");
+    }
+  }
+
+  async function appendContactNote(id, note) {
+    const current = contacts.find((row) => row.id === id);
+    if (!current) return;
+    const notes = current.notes ? `${current.notes}\n\n${note}` : note;
+    const response = await apiFetch(`/api/contacts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    });
+    const saved = fromApiContact(response.data);
+    const merged = {
+      ...current,
+      ...saved,
+      notes,
+      contactType: current.contactType,
+      lifecycle: current.lifecycle,
+      tags: current.tags,
+    };
+    persistContactMeta(merged);
+    setContacts((prev) =>
+      prev.map((row) => (row.id === saved.id ? merged : row))
+    );
+    return merged;
+  }
+
+  function openAiAction(id) {
+    if (id === "followup") {
+      setOutreachDraft(buildOutreachDraft(outreachTargets));
+    }
+    setAiAction(id);
+  }
+
+  function showContacts(targets) {
+    setSelected(targets.map((contact) => contact.id));
+    setTypeFilter("all");
+    setLifecycleFilter("all");
+    setOwnerFilter("all");
+    setQuery("");
+    resetPage();
+    setAiAction(null);
+    setAiOpen(false);
+  }
+
+  function viewChampionContacts() {
+    showContacts(championRows.length ? championRows : contacts.slice(0, 5));
+  }
+
+  function viewQbrContacts() {
+    if (qbrContacts.length) {
+      showContacts(qbrContacts);
+      return;
+    }
+    setTypeFilter("Customer");
+    setLifecycleFilter("all");
+    setAiAction(null);
+    setAiOpen(false);
+    resetPage();
+  }
+
+  async function saveOutreachDrafts() {
+    if (!outreachTargets.length) {
+      toast.error("No contacts need outreach right now");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const note = serializeContactAiNote(
+        `Draft outreach\n${outreachDraft.trim()}`
+      );
+      await Promise.all(
+        outreachTargets.map((contact) => appendContactNote(contact.id, note))
+      );
+      toast.success(
+        `Saved outreach note for ${outreachTargets.length} contact${outreachTargets.length === 1 ? "" : "s"}`
+      );
+      showContacts(outreachTargets);
+    } catch (error) {
+      toast.error(error.message || "Could not save outreach drafts");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function copyOutreachDraft() {
+    try {
+      await navigator.clipboard.writeText(outreachDraft);
+      toast.success("Draft copied");
+    } catch {
+      toast.error("Could not copy to clipboard");
+    }
   }
 
   async function handleSaveContact(data, { isEdit }) {
@@ -392,15 +843,6 @@ export function ContactsHome() {
     closeForm(false);
   }
 
-  function toggleSort(key) {
-    if (sortKey === key) {
-      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortKey(key);
-    setSortDir("asc");
-  }
-
   function toggleColumn(id) {
     setVisibleColumns((prev) => {
       if (prev.includes(id)) {
@@ -425,6 +867,15 @@ export function ContactsHome() {
       return;
     }
     setSelected((prev) => [...new Set([...prev, ...pageRows.map((r) => r.id)])]);
+  }
+
+  function toggleSort(key) {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDir("asc");
   }
 
   function clearFilters() {
@@ -478,22 +929,33 @@ export function ContactsHome() {
 
   const existingEmails = contacts.map((c) => c.email).filter(Boolean);
 
+  const contactStats = useMemo(
+    () => computeContactStats(contacts),
+    [contacts]
+  );
+
   if (loadStatus === "loading") return <ContactsSkeleton />;
 
-  const kpiCards = KPI_CARD_VALUES.map((card) => ({
-    ...card,
-    value: formatCount(card.value),
-    hint:
-      card.id === "total"
-        ? `${formatCount(filteredContacts.length)} visible with filters`
-        : card.hint,
-  }));
+  const kpiCards = CONTACT_KPI_DEFINITIONS.map((card) => {
+    const valueById = {
+      total: contactStats.total,
+      new: contactStats.newThisMonth,
+      active: contactStats.active,
+      withoutCompany: contactStats.withoutCompany,
+    };
+    return {
+      ...card,
+      value: formatCount(valueById[card.id] ?? 0),
+    };
+  });
 
   return (
     <div className="mx-auto flex w-full min-w-0 max-w-[1440px] flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <nav className="mb-2 flex items-center gap-1.5 text-[12px] text-primary-500/80">
+          <nav
+            className={cn("mb-2 flex items-center gap-1.5", crmType.breadcrumb)}
+          >
             <span>Workspace</span>
             <span className="text-primary-300">/</span>
             <span className="font-medium text-primary-700 dark:text-primary-300">
@@ -504,10 +966,39 @@ export function ContactsHome() {
             Contacts
           </h1>
           <p className="mt-1 max-w-[56ch] text-[14px] text-neutral-500">
-            Manage relationships across companies, deals, and activities.
+            Manage your customer and business relationships.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 rounded-lg"
+            onClick={() => setImportOpen(true)}
+          >
+            <Upload className="size-3.5" />
+            Import Contacts
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 rounded-lg"
+            aria-label="Export contacts"
+            onClick={() => setExportOpen(true)}
+          >
+            <Download className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 rounded-lg border-primary-200 bg-gradient-to-br from-primary-50 via-secondary-50 to-primary-100 text-primary-700 hover:from-primary-100 hover:via-secondary-100 hover:to-primary-200 hover:text-primary-800 dark:border-primary-800 dark:from-primary-950 dark:via-secondary-900/50 dark:to-primary-900 dark:text-primary-300 dark:hover:from-primary-900 dark:hover:via-secondary-900/70 dark:hover:to-primary-800"
+            aria-label="AI Contact Insights"
+            onClick={() => setAiOpen(true)}
+          >
+            <Sparkles className="size-4" />
+          </Button>
           <Button
             type="button"
             className="h-9 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
@@ -516,40 +1007,6 @@ export function ContactsHome() {
             <Plus className="size-3.5" />
             Add Contact
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9 rounded-lg"
-            onClick={() => setImportOpen(true)}
-          >
-            <Upload className="size-3.5" />
-            Import
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9 rounded-lg"
-                  aria-label="More actions"
-                />
-              }
-            >
-              <MoreHorizontal className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setExportOpen(true)}>
-                <Download className="size-3.5" />
-                Export
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setPropertiesOpen(true)}>
-                <Settings2 className="size-3.5" />
-                Manage Properties
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </div>
 
@@ -642,7 +1099,7 @@ export function ContactsHome() {
         <div className="flex flex-col gap-3 border-b border-neutral-100 p-3 dark:border-neutral-800">
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <div className="relative min-w-[260px] max-w-xl flex-1">
+              <div className="relative min-w-[280px] max-w-xl flex-1">
                 <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-neutral-400" />
                 <Input
                   value={query}
@@ -650,7 +1107,7 @@ export function ContactsHome() {
                     setQuery(e.target.value);
                     resetPage();
                   }}
-                  placeholder="Search by name, email, company, or tag…"
+                  placeholder="Search contacts by name, company, or email…"
                   className="h-9 pl-8"
                 />
               </div>
@@ -668,7 +1125,10 @@ export function ContactsHome() {
                 <Filter className="size-3.5" />
                 Filters
                 {activeFilterCount > 0 ? (
-                  <Badge className="ml-1 h-5 min-w-5 justify-center rounded-full bg-primary-50 px-1.5 text-[10px] text-primary-700">
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 h-5 min-w-5 justify-center rounded-full bg-primary-50 px-1.5 text-[10px] text-primary-700"
+                  >
                     {activeFilterCount}
                   </Badge>
                 ) : null}
@@ -676,7 +1136,11 @@ export function ContactsHome() {
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
-                    <Button type="button" variant="outline" className="h-9 rounded-lg" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-lg"
+                    />
                   }
                 >
                   <ArrowDownUp className="size-3.5" />
@@ -685,8 +1149,7 @@ export function ContactsHome() {
                 <DropdownMenuContent align="end" className="min-w-48">
                   {[
                     ["createdAt", "Created date"],
-                    ["name", "Name"],
-                    ["lastActivity", "Last activity"],
+                    ["name", "Contact name"],
                     ["company", "Company"],
                     ["owner", "Owner"],
                   ].map(([key, label]) => (
@@ -700,35 +1163,38 @@ export function ContactsHome() {
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
-                    <Button type="button" variant="outline" className="h-9 rounded-lg" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-lg"
+                    />
                   }
                 >
                   <Columns3 className="size-3.5" />
                   Columns
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-52">
-                  {ALL_COLUMNS.map((col) => (
-                    <label
-                      key={col.id}
-                      className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-                    >
-                      <Checkbox
-                        checked={visibleColumns.includes(col.id)}
-                        onCheckedChange={() => toggleColumn(col.id)}
-                      />
-                      {col.label}
-                    </label>
-                  ))}
+                  {ALL_COLUMNS.map((col) => {
+                    const checked = visibleColumns.includes(col.id);
+                    return (
+                      <label
+                        key={col.id}
+                        className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => toggleColumn(col.id)}
+                          aria-label={`Toggle ${col.label} column`}
+                          className="size-4 rounded-[4px] border-neutral-300 shadow-none data-checked:border-primary-600 data-checked:bg-primary-600 data-checked:text-white dark:border-neutral-600 dark:data-checked:border-primary-600 dark:data-checked:bg-primary-600"
+                        />
+                        <span>{col.label}</span>
+                      </label>
+                    );
+                  })}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            <Tabs
-              value={view}
-              onValueChange={(next) => {
-                setView(next);
-                resetPage();
-              }}
-            >
+            <Tabs value={view} onValueChange={setView} className="shrink-0 gap-0">
               <TabsList className="h-9">
                 <TabsTrigger value="table" className="gap-1.5 px-2.5">
                   <LayoutList className="size-3.5" />
@@ -742,16 +1208,21 @@ export function ContactsHome() {
             </Tabs>
           </div>
 
-          {(activeFilterCount > 0 || selected.length > 0) && (
+          {activeFilterCount > 0 || selected.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               {activeFilterCount > 0 ? (
-                <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
-                  Clear filters
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                >
+                  Clear all filters
                 </Button>
               ) : null}
               {selected.length > 0 ? (
                 <>
-                  <span className="text-[12px] text-muted-foreground">
+                  <span className="text-[12px] font-medium text-neutral-500">
                     {selected.length} selected
                   </span>
                   <Button
@@ -766,11 +1237,13 @@ export function ContactsHome() {
                             apiFetch(`/api/contacts/${id}`, { method: "DELETE" })
                           )
                         );
-                        setContacts((prev) => prev.filter((c) => !ids.includes(c.id)));
+                        setContacts((prev) =>
+                          prev.filter((contact) => !ids.includes(contact.id))
+                        );
                         setSelected([]);
-                        toast.success("Deleted selected contacts");
+                        toast.success("Selected contacts removed");
                       } catch (error) {
-                        toast.error(error.message || "Delete failed");
+                        toast.error(error.message || "Could not delete contacts");
                       }
                     }}
                   >
@@ -781,9 +1254,7 @@ export function ContactsHome() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      exportContacts(contacts.filter((c) => selected.includes(c.id)))
-                    }
+                    onClick={() => setExportOpen(true)}
                   >
                     <Download className="size-3.5" />
                     Export
@@ -791,14 +1262,14 @@ export function ContactsHome() {
                 </>
               ) : null}
             </div>
-          )}
+          ) : null}
         </div>
 
         {view === "table" ? (
           <>
-            <Table className="min-w-[1000px]">
+            <Table className="min-w-[1100px] table-fixed text-xs">
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-muted/50 text-xs hover:bg-muted/50">
                   <TableHead className="w-10 px-3">
                     <Checkbox
                       checked={
@@ -806,47 +1277,43 @@ export function ContactsHome() {
                         pageRows.every((row) => selected.includes(row.id))
                       }
                       onCheckedChange={toggleSelectAll}
+                      aria-label="Select all on page"
                     />
                   </TableHead>
                   {visibleColumns.includes("name") ? (
-                    <TableHead className="px-3">
+                    <TableHead className="w-[240px] px-3">
                       <button type="button" onClick={() => toggleSort("name")}>
-                        Name
+                        Contact
                       </button>
                     </TableHead>
                   ) : null}
-                  {visibleColumns.includes("company") ? (
-                    <TableHead className="px-3">Company</TableHead>
-                  ) : null}
                   {visibleColumns.includes("title") ? (
-                    <TableHead className="px-3">Job title</TableHead>
+                    <TableHead className="w-[160px] px-3">Job Title</TableHead>
+                  ) : null}
+                  {visibleColumns.includes("company") ? (
+                    <TableHead className="w-[120px] px-3">Company</TableHead>
+                  ) : null}
+                  {visibleColumns.includes("phone") ? (
+                    <TableHead className="px-3">Phone</TableHead>
                   ) : null}
                   {visibleColumns.includes("type") ? (
-                    <TableHead className="px-3">Type</TableHead>
-                  ) : null}
-                  {visibleColumns.includes("lifecycle") ? (
-                    <TableHead className="px-3">Lifecycle</TableHead>
+                    <TableHead className="w-[120px] px-3">Contact Type</TableHead>
                   ) : null}
                   {visibleColumns.includes("owner") ? (
-                    <TableHead className="px-3">Owner</TableHead>
-                  ) : null}
-                  {visibleColumns.includes("tags") ? (
-                    <TableHead className="px-3">Tags</TableHead>
-                  ) : null}
-                  {visibleColumns.includes("lastActivity") ? (
-                    <TableHead className="px-3">Last activity</TableHead>
+                    <TableHead className="w-[120px] px-3">Owner</TableHead>
                   ) : null}
                   {visibleColumns.includes("createdAt") ? (
-                    <TableHead className="px-3">Created</TableHead>
+                    <TableHead className="w-[120px] px-3">Created Date</TableHead>
                   ) : null}
+                  <TableHead className="px-3 text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pageRows.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={visibleColumns.length + 1}
-                      className="py-12 text-center text-muted-foreground"
+                      colSpan={visibleColumns.length + 2}
+                      className="px-3 py-10 text-center text-xs text-muted-foreground"
                     >
                       No contacts match your filters.
                     </TableCell>
@@ -855,215 +1322,252 @@ export function ContactsHome() {
                   pageRows.map((contact) => {
                     const owner = ownerById(contact.ownerId, owners);
                     return (
-                      <TableRow key={contact.id}>
-                        <TableCell className="px-3">
+                      <TableRow
+                        key={contact.id}
+                        data-state={
+                          selected.includes(contact.id) ? "selected" : undefined
+                        }
+                      >
+                        <TableCell className="px-3 py-2.5">
                           <Checkbox
                             checked={selected.includes(contact.id)}
                             onCheckedChange={() => toggleSelect(contact.id)}
+                            aria-label={`Select ${fullName(contact)}`}
                           />
                         </TableCell>
                         {visibleColumns.includes("name") ? (
-                          <TableCell className="px-3 py-2.5">
+                          <TableCell className="overflow-hidden px-3 py-2.5">
                             <button
                               type="button"
                               onClick={() => openContact(contact)}
                               className="flex w-full min-w-0 items-center gap-2.5 text-left"
                             >
-                              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[11px] font-semibold text-primary-700 dark:bg-primary-950 dark:text-primary-300">
+                              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700">
                                 {initials(contact)}
                               </span>
-                              <span className="min-w-0">
-                                <span className="block truncate font-semibold">
-                                  {fullName(contact)}
-                                </span>
-                                <span className="block truncate text-[12px] text-muted-foreground">
-                                  {contact.email || "—"}
-                                </span>
+                              <span className="min-w-0 flex-1 overflow-hidden">
+                                <TruncateText
+                                  value={fullName(contact)}
+                                  className="text-xs font-semibold"
+                                />
+                                <TruncateText
+                                  value={contact.email}
+                                  className="text-xs text-muted-foreground"
+                                />
                               </span>
                             </button>
                           </TableCell>
                         ) : null}
-                        {visibleColumns.includes("company") ? (
-                          <TableCell className="px-3 text-muted-foreground">
-                            {companyMap[contact.companyId] || "—"}
+                        {visibleColumns.includes("title") ? (
+                          <TableCell className="overflow-hidden px-3 py-2.5">
+                            <TruncateText
+                              value={contact.title}
+                              className="text-xs text-muted-foreground"
+                            />
                           </TableCell>
                         ) : null}
-                        {visibleColumns.includes("title") ? (
-                          <TableCell className="px-3 text-muted-foreground">
-                            {contact.title || "—"}
+                        {visibleColumns.includes("company") ? (
+                          <TableCell className="overflow-hidden px-3 py-2.5">
+                            <TruncateText
+                              value={companyMap[contact.companyId]}
+                              className="text-xs font-medium"
+                            />
+                          </TableCell>
+                        ) : null}
+                        {visibleColumns.includes("phone") ? (
+                          <TableCell className="overflow-hidden px-3 py-2.5">
+                            <TruncateText
+                              value={contact.phone}
+                              className="text-xs text-muted-foreground"
+                            />
                           </TableCell>
                         ) : null}
                         {visibleColumns.includes("type") ? (
-                          <TableCell className="px-3">
+                          <TableCell className="overflow-hidden px-3 py-2.5">
                             <Badge
                               variant="outline"
+                              title={contact.contactType}
                               className={cn(
-                                "border-transparent",
+                                "h-auto max-w-full overflow-hidden border-transparent text-xs",
                                 CONTACT_TYPE_STYLES[contact.contactType] ||
                                   CONTACT_TYPE_STYLES.Other
                               )}
                             >
-                              {contact.contactType}
-                            </Badge>
-                          </TableCell>
-                        ) : null}
-                        {visibleColumns.includes("lifecycle") ? (
-                          <TableCell className="px-3">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "border-transparent",
-                                LIFECYCLE_STYLES[contact.lifecycle] ||
-                                  LIFECYCLE_STYLES.Inactive
-                              )}
-                            >
-                              {contact.lifecycle}
+                              <span className="truncate">{contact.contactType}</span>
                             </Badge>
                           </TableCell>
                         ) : null}
                         {visibleColumns.includes("owner") ? (
-                          <TableCell className="px-3">
-                            <span className="flex items-center gap-2 text-[13px]">
-                              <span className="flex size-5 items-center justify-center rounded-full bg-muted text-[9px] font-bold">
-                                {owner.initials}
-                              </span>
-                              {owner.name}
-                            </span>
-                          </TableCell>
-                        ) : null}
-                        {visibleColumns.includes("tags") ? (
-                          <TableCell className="px-3">
-                            <div className="flex flex-wrap gap-1">
-                              {(contact.tags || []).slice(0, 2).map((tag, i) => (
-                                <span
-                                  key={tag}
-                                  className={cn(
-                                    "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                                    tagStyleAt(i)
-                                  )}
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          </TableCell>
-                        ) : null}
-                        {visibleColumns.includes("lastActivity") ? (
-                          <TableCell className="px-3 text-muted-foreground">
-                            {formatDate(contact.lastActivityAt)}
+                          <TableCell className="overflow-hidden px-3 py-2.5">
+                            <TruncateText value={owner.name} className="text-xs" />
                           </TableCell>
                         ) : null}
                         {visibleColumns.includes("createdAt") ? (
-                          <TableCell className="px-3 text-muted-foreground">
+                          <TableCell className="px-3 py-2.5 text-xs text-muted-foreground">
                             {formatDate(contact.createdAt)}
                           </TableCell>
                         ) : null}
+                        <TableCell className="px-3 py-2.5">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="View contact"
+                              onClick={() => openContact(contact)}
+                            >
+                              <Eye className="size-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Edit contact"
+                              onClick={() => openEdit(contact)}
+                            >
+                              <SquarePen className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     );
                   })
                 )}
               </TableBody>
             </Table>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-3 py-2.5 dark:border-neutral-800">
+              <p className="text-[12px] text-neutral-500">
+                Showing{" "}
+                {filteredContacts.length === 0
+                  ? 0
+                  : (page - 1) * pageSize + 1}
+                –
+                {Math.min(page * pageSize, filteredContacts.length)} of{" "}
+                {filteredContacts.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    setPageSize(Number(value));
+                    resetPage();
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[108px] rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZES.map((size) => (
+                      <SelectItem key={size} value={String(size)}>
+                        {size} / page
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((prev) => prev - 1)}
+                >
+                  Previous
+                </Button>
+                <span className="text-[12px] font-medium text-neutral-500">
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((prev) => prev + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           </>
         ) : (
-          <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {pageRows.length === 0 ? (
-              <p className="col-span-full py-12 text-center text-muted-foreground">
-                No contacts match your filters.
+          <>
+            <div className="p-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {pageRows.length === 0 ? (
+                  <p className="col-span-full py-12 text-center text-sm text-muted-foreground">
+                    No contacts match your filters.
+                  </p>
+                ) : (
+                  pageRows.map((contact) => {
+                    const owner = ownerById(contact.ownerId, owners);
+                    return (
+                      <ContactGridCard
+                        key={contact.id}
+                        contact={contact}
+                        owner={owner}
+                        companyName={companyMap[contact.companyId]}
+                        onOpen={() => openContact(contact)}
+                        onEdit={() => openEdit(contact)}
+                        onDelete={() => deleteContact(contact)}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-3 py-2.5 dark:border-neutral-800">
+              <p className="text-[12px] text-neutral-500">
+                Showing{" "}
+                {filteredContacts.length === 0
+                  ? 0
+                  : (page - 1) * pageSize + 1}
+                –
+                {Math.min(page * pageSize, filteredContacts.length)} of{" "}
+                {filteredContacts.length}
               </p>
-            ) : (
-              pageRows.map((contact) => {
-                const owner = ownerById(contact.ownerId, owners);
-                return (
-                  <button
-                    key={contact.id}
-                    type="button"
-                    onClick={() => openContact(contact)}
-                    className="rounded-2xl border border-neutral-200/80 bg-white p-4 text-left transition hover:shadow-md dark:border-neutral-800 dark:bg-neutral-950"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="flex size-10 items-center justify-center rounded-full bg-primary-50 text-[12px] font-bold text-primary-700 dark:bg-primary-950 dark:text-primary-300">
-                        {initials(contact)}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-semibold">{fullName(contact)}</p>
-                        <p className="truncate text-[12px] text-muted-foreground">
-                          {contact.title || contact.email || "—"}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="mt-3 truncate text-[12px] text-muted-foreground">
-                      {companyMap[contact.companyId] || "No company"}
-                    </p>
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "border-transparent text-[10px]",
-                          LIFECYCLE_STYLES[contact.lifecycle]
-                        )}
-                      >
-                        {contact.lifecycle}
-                      </Badge>
-                      <span className="text-[11px] text-muted-foreground">
-                        {owner.initials}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    setPageSize(Number(value));
+                    resetPage();
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[108px] rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAGE_SIZES.map((size) => (
+                      <SelectItem key={size} value={String(size)}>
+                        {size} / page
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((prev) => prev - 1)}
+                >
+                  Previous
+                </Button>
+                <span className="text-[12px] font-medium text-neutral-500">
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((prev) => prev + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
         )}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-4 py-3 dark:border-neutral-800">
-          <p className="text-[12px] text-muted-foreground">
-            Showing {(page - 1) * pageSize + 1}–
-            {Math.min(page * pageSize, filteredContacts.length)} of{" "}
-            {formatCount(filteredContacts.length)}
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={String(pageSize)}
-              onValueChange={(v) => {
-                setPageSize(Number(v));
-                resetPage();
-              }}
-            >
-              <SelectTrigger className="h-8 w-[110px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZES.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size} / page
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Previous
-            </Button>
-            <span className="text-[12px] tabular-nums">
-              {page} / {totalPages}
-            </span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
       </Card>
 
       <ContactFormDrawer
@@ -1194,8 +1698,8 @@ export function ContactsHome() {
         <DialogContent title="Export contacts">
           <DialogBody>
             <p className="text-[13px] text-muted-foreground">
-              Export {selected.length ? selected.length : filteredContacts.length}{" "}
-              contact(s) to CSV (includes prototype type/lifecycle columns).
+              Export {filteredContacts.length} contact(s) to CSV (includes type/lifecycle
+              columns where stored locally).
             </p>
           </DialogBody>
           <DialogFooter>
@@ -1204,13 +1708,7 @@ export function ContactsHome() {
             </Button>
             <Button
               className="bg-primary-600 text-white hover:bg-primary-700"
-              onClick={() =>
-                exportContacts(
-                  selected.length
-                    ? contacts.filter((c) => selected.includes(c.id))
-                    : filteredContacts
-                )
-              }
+              onClick={() => exportContacts(filteredContacts)}
             >
               <Download className="size-3.5" />
               Download CSV
@@ -1219,21 +1717,222 @@ export function ContactsHome() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={propertiesOpen} onOpenChange={setPropertiesOpen}>
-        <DialogContent title="Manage properties">
-          <DialogBody>
-            <p className="text-[13px] text-muted-foreground">
-              Custom contact fields (type, lifecycle, tags, LinkedIn, department) are
-              stored locally for this prototype in{" "}
-              <code className="rounded bg-muted px-1">novacrm:contact-meta</code> until
-              backend metadata is available.
-            </p>
+      <Sheet
+        open={aiOpen}
+        onOpenChange={(open) => {
+          setAiOpen(open);
+          if (!open) setAiAction(null);
+        }}
+      >
+        <SheetContent
+          title="AI Contact Insights"
+          description="Recommendations you can act on from your contact list."
+          onClose={() => {
+            setAiOpen(false);
+            setAiAction(null);
+          }}
+        >
+          <SheetBody className="space-y-3">
+            {aiInsights.map((insight) => (
+              <Card key={insight.id} size="sm" className="py-3">
+                <CardContent className="px-3">
+                  <p className="text-[13px] font-semibold">{insight.title}</p>
+                  <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                    {insight.body}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-2 h-9 w-full justify-start rounded-lg bg-muted px-2.5 text-[12px] font-medium text-muted-foreground hover:bg-neutral-200 hover:text-foreground"
+                    onClick={() => openAiAction(insight.id)}
+                  >
+                    {insight.action}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog
+        open={aiAction === "followup"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Draft outreach"
+          description="Save this note to contacts with stale deal engagement, or copy it to send yourself."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {outreachTargets.map((contact) => (
+                <span
+                  key={contact.id}
+                  className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-950 dark:text-primary-300"
+                >
+                  {fullName(contact)}
+                </span>
+              ))}
+            </div>
+            <Textarea
+              value={outreachDraft}
+              onChange={(event) => setOutreachDraft(event.target.value)}
+              rows={8}
+            />
           </DialogBody>
           <DialogFooter>
-            <Button onClick={() => setPropertiesOpen(false)}>Got it</Button>
+            <Button type="button" variant="outline" onClick={copyOutreachDraft}>
+              <Copy className="size-3.5" />
+              Copy
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => showContacts(outreachTargets)}
+              disabled={!outreachTargets.length}
+            >
+              View contacts
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              disabled={
+                aiBusy || !outreachDraft.trim() || !outreachTargets.length
+              }
+              onClick={saveOutreachDrafts}
+            >
+              {aiBusy ? "Saving…" : "Save drafts"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={aiAction === "champion"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Champion signal"
+          description="Contacts tagged as champions or Customers with recent activity."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            {championRows.length ? (
+              <ul className="space-y-2">
+                {championRows.map((contact) => (
+                  <li
+                    key={contact.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
+                  >
+                    <div>
+                      <p className="text-[13px] font-semibold">
+                        {fullName(contact)}
+                      </p>
+                      <p className="text-[12px] text-muted-foreground">
+                        {contact.contactType || "Contact"}
+                        {contact.lifecycle ? ` · ${contact.lifecycle}` : ""}
+                      </p>
+                    </div>
+                    <p className="text-[12px] text-muted-foreground">
+                      {(contact.tags || []).slice(0, 2).join(", ") || "Active"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-muted-foreground">
+                No champion signals yet. Add a Champion tag or mark engaged
+                customers.
+              </p>
+            )}
+            <p className="text-[12px] leading-5 text-muted-foreground">
+              Prioritize these contacts for referrals, case studies, and
+              executive briefings.
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setAiAction(null)}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              onClick={viewChampionContacts}
+              disabled={!championRows.length}
+            >
+              View champions
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={aiAction === "next"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Recommend next action"
+          description="Quarterly business reviews for high-value customer relationships."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            {qbrContacts.length ? (
+              <ul className="space-y-2">
+                {qbrContacts.map((contact) => (
+                  <li
+                    key={contact.id}
+                    className="rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
+                  >
+                    <p className="text-[13px] font-semibold">
+                      {fullName(contact)}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      {contact.contactType || "Contact"} ·{" "}
+                      {contact.lifecycle || "—"}
+                    </p>
+                    <p className="mt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
+                      Book a 45-minute QBR to review adoption, ROI, and renewals.
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-muted-foreground">
+                No customer contacts yet. Convert leads or set contact type to
+                Customer.
+              </p>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setAiAction(null)}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              onClick={viewQbrContacts}
+            >
+              View accounts
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

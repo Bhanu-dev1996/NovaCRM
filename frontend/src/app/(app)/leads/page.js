@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 
-import { LeadsHome, LeadsSkeleton } from "@/components/leads/leads-home";
+import { LeadsHome } from "@/components/leads/leads-home";
+import { LeadsSkeleton } from "@/components/leads/lead-skeletons";
 import { siteConfig } from "@/config/site";
 
 export const metadata = {

@@ -236,6 +236,7 @@ export function PhoneInput({
   id,
   value,
   onChange,
+  onBlur,
   className,
   placeholder,
   disabled = false,
@@ -287,6 +288,7 @@ export function PhoneInput({
         disabled={disabled}
         value={displayNational}
         onChange={(event) => updateNational(event.target.value)}
+        onBlur={onBlur}
         placeholder={nationalPlaceholder}
         className="min-w-0 flex-1 bg-transparent px-2.5 text-sm outline-none placeholder:text-muted-foreground"
         aria-label="Phone number"

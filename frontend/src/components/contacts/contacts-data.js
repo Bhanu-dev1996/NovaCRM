@@ -24,11 +24,11 @@ export const CONTACT_OWNERS = [
   { id: "riley", name: "Riley Chen", initials: "RC" },
 ];
 
-export const KPI_CARD_VALUES = [
+/** KPI card layout for the contacts list (values computed from API data). */
+export const CONTACT_KPI_DEFINITIONS = [
   {
     id: "total",
     label: "Total Contacts",
-    value: 3842,
     hint: "People in your workspace",
     icon: "users",
     iconClass:
@@ -37,7 +37,6 @@ export const KPI_CARD_VALUES = [
   {
     id: "new",
     label: "New This Month",
-    value: 246,
     hint: "Added in the current month",
     icon: "user-plus",
     iconClass: "bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
@@ -45,18 +44,16 @@ export const KPI_CARD_VALUES = [
   {
     id: "active",
     label: "Active Contacts",
-    value: 2715,
     hint: "Lifecycle status Active or Customer",
     icon: "badge-check",
     iconClass:
       "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
   },
   {
-    id: "engaged",
-    label: "Engaged This Week",
-    value: 184,
-    hint: "Touched in the last 7 days",
-    icon: "activity",
+    id: "withoutCompany",
+    label: "Without Company",
+    hint: "No company linked on the contact",
+    icon: "building",
     iconClass:
       "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
   },
@@ -118,7 +115,33 @@ export const CONTACT_AI_INSIGHTS = [
 /** Demo enrichments keyed by work email (merged onto API rows in the UI). */
 export const DEMO_CONTACTS = [
   {
+    email: "maya.chen@vertex.io",
+    linkedDealNames: ["Vertex Solutions — Enterprise"],
+    contactType: "Customer",
+    lifecycle: "Customer",
+    tags: ["SaaS", "Champion"],
+    linkedIn: "linkedin.com/in/mayachen",
+    department: "Revenue",
+    notes: "Executive sponsor for Vertex rollout.",
+    lastActivityAt: "2026-10-31",
+    ownerId: "alex",
+  },
+  {
+    email: "aisha@cloudscale.io",
+    linkedDealNames: ["CloudScale Expansion"],
+    contactType: "Customer",
+    lifecycle: "Customer",
+    tags: ["Cloud", "Expansion"],
+    linkedIn: "linkedin.com/in/aisha-cloudscale",
+    department: "Growth",
+    notes: "Converted lead — primary contact on expansion deal.",
+    lastActivityAt: "2026-10-30",
+    ownerId: "jordan",
+  },
+  {
     email: "priya.nair@infosys.com",
+    linkedLeadEmails: ["priya@orbitlabs.ai"],
+    linkedDealNames: ["Infosys Digital CRM"],
     contactType: "Customer",
     lifecycle: "Active",
     tags: ["Enterprise", "Champion"],
@@ -130,6 +153,8 @@ export const DEMO_CONTACTS = [
   },
   {
     email: "arjun.mehta@tatasteel.com",
+    linkedLeadEmails: ["dortiz@acmecorp.com"],
+    linkedDealNames: ["Tata Steel — CRM Pilot"],
     contactType: "Prospect",
     lifecycle: "Opportunity",
     tags: ["Manufacturing", "Pilot"],
@@ -141,6 +166,8 @@ export const DEMO_CONTACTS = [
   },
   {
     email: "emily.chen@stripe.com",
+    linkedLeadEmails: ["elena.v@globalpay.com"],
+    linkedDealNames: ["GlobalPay Partnership"],
     contactType: "Partner",
     lifecycle: "Active",
     tags: ["FinTech", "Integration"],
@@ -163,6 +190,8 @@ export const DEMO_CONTACTS = [
   },
   {
     email: "sophie.martin@salesforce.com",
+    linkedLeadEmails: ["noah@brightline.media"],
+    linkedDealNames: ["Salesforce Alliance Package"],
     contactType: "Vendor",
     lifecycle: "Active",
     tags: ["ISV", "Alliance"],
@@ -174,6 +203,8 @@ export const DEMO_CONTACTS = [
   },
   {
     email: "rahul.verma@hdfcbank.com",
+    linkedLeadEmails: ["j.blake@northstar.co"],
+    linkedDealNames: ["HDFC Procurement Pilot"],
     contactType: "Prospect",
     lifecycle: "Lead",
     tags: ["Banking", "Compliance"],
@@ -185,6 +216,8 @@ export const DEMO_CONTACTS = [
   },
   {
     email: "olivia.brown@deloitte.com",
+    linkedLeadEmails: ["c.patel@fintecharch.com"],
+    linkedDealNames: ["Deloitte Advisory — Referral"],
     contactType: "Partner",
     lifecycle: "Active",
     tags: ["Consulting", "Referral"],
@@ -207,6 +240,8 @@ export const DEMO_CONTACTS = [
   },
   {
     email: "maria.garcia@telefonica.com",
+    linkedLeadEmails: ["mwebb@biohealth.com"],
+    linkedDealNames: ["Telefónica Madrid Hub"],
     contactType: "Customer",
     lifecycle: "Active",
     tags: ["Telco", "EMEA"],
@@ -218,6 +253,8 @@ export const DEMO_CONTACTS = [
   },
   {
     email: "david.kim@samsung.com",
+    linkedLeadEmails: ["sofia@nexusretail.com"],
+    linkedDealNames: ["Samsung Enablement Rollout"],
     contactType: "Prospect",
     lifecycle: "Opportunity",
     tags: ["Hardware", "Global"],
@@ -233,8 +270,59 @@ const demoByEmail = Object.fromEntries(
   DEMO_CONTACTS.map((row) => [row.email.toLowerCase(), row])
 );
 
+/** Deal names for demo leads (contact tab + lead tab stay in sync). */
+const demoDealNamesByLeadEmail = (() => {
+  const map = {};
+  function add(email, names) {
+    const key = String(email || "").trim().toLowerCase();
+    if (!key || !names?.length) return;
+    map[key] = [...new Set([...(map[key] || []), ...names])];
+  }
+  for (const row of DEMO_CONTACTS) {
+    const dealNames = row.linkedDealNames || [];
+    if (dealNames.length) {
+      add(row.email, dealNames);
+    }
+    for (const leadEmail of row.linkedLeadEmails || []) {
+      add(leadEmail, dealNames);
+    }
+  }
+  return map;
+})();
+
 export function demoEnrichmentForEmail(email) {
   return demoByEmail[String(email || "").trim().toLowerCase()] || null;
+}
+
+export function demoDealNamesForLeadEmail(email) {
+  const key = String(email || "").trim().toLowerCase();
+  return demoDealNamesByLeadEmail[key] || [];
+}
+
+const DEMO_DEAL_AMOUNTS = {
+  "vertex solutions — enterprise": 48000,
+  "cloudscale expansion": 125000,
+  "infosys digital crm": 92000,
+  "globalpay partnership": 67000,
+  "hdfc procurement pilot": 54000,
+  "salesforce alliance package": 38000,
+  "tata steel — crm pilot": 72000,
+  "deloitte advisory — referral": 45000,
+  "telefónica madrid hub": 103000,
+  "samsung enablement rollout": 88000,
+};
+
+export function demoLinkedDealSpecsForContact(email) {
+  const demo = demoEnrichmentForEmail(email);
+  return (demo?.linkedDealNames || []).map((name) => {
+    const trimmed = String(name).trim();
+    const key = trimmed.toLowerCase();
+    return {
+      name: trimmed,
+      amount: DEMO_DEAL_AMOUNTS[key] ?? 50000,
+      currency: "USD",
+    };
+  });
 }
 
 export function ownerById(id, owners = CONTACT_OWNERS) {

@@ -1,11 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { crmControl, crmType } from "@/lib/crm-typography";
 import { cn } from "@/lib/utils";
 
 export function FieldError({ message }) {
   if (!message) return null;
-  return <p className="mt-1 text-[11px] text-error-text">{message}</p>;
+  return <p className={cn("mt-1", crmType.error)}>{message}</p>;
 }
 
 export function CrmPageHeader({
@@ -18,7 +19,7 @@ export function CrmPageHeader({
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
       <div>
-        <nav className="mb-2 flex items-center gap-1.5 text-[12px] text-primary-500/80">
+        <nav className={cn("mb-2 flex items-center gap-1.5", crmType.breadcrumb)}>
           <span>Workspace</span>
           <span className="text-primary-300">/</span>
           <span className="font-medium text-primary-700 dark:text-primary-300">
@@ -28,14 +29,14 @@ export function CrmPageHeader({
         <h1 className="text-[26px] leading-8 font-bold tracking-[-0.03em] text-neutral-900 sm:text-[28px] dark:text-neutral-50">
           {title}
         </h1>
-        <p className="mt-1 max-w-[56ch] text-[14px] text-neutral-500">
+        <p className={cn("mt-1 max-w-[56ch]", crmType.pageDescription)}>
           {description}
         </p>
       </div>
       {actionLabel ? (
         <Button
           type="button"
-          className="h-9 gap-1.5 rounded-lg"
+          className="h-9 gap-1.5 rounded-lg px-3"
           onClick={onAction}
         >
           {actionLabel}
@@ -48,14 +49,17 @@ export function CrmPageHeader({
 export function CrmEmptyState({ title, description, actionLabel, onAction }) {
   return (
     <div className="rounded-2xl border border-dashed border-neutral-200 bg-white px-5 py-14 text-center dark:border-neutral-700 dark:bg-neutral-950">
-      <h2 className="text-[16px] font-semibold text-neutral-900 dark:text-neutral-50">
-        {title}
-      </h2>
-      <p className="mx-auto mt-1 max-w-[42ch] text-[13px] text-neutral-500">
+      <h2 className={crmType.dialogTitle}>{title}</h2>
+      <p className={cn("mx-auto mt-1 max-w-[42ch]", crmType.emptyDescription)}>
         {description}
       </p>
       {actionLabel ? (
-        <Button type="button" className="mt-5 h-9 rounded-lg" onClick={onAction}>
+        <Button
+          type="button"
+          size="sm"
+          className={cn("mt-5", crmControl.btnPrimarySm, "rounded-lg px-4")}
+          onClick={onAction}
+        >
           {actionLabel}
         </Button>
       ) : null}

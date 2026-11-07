@@ -29,6 +29,11 @@ export function writeContactMeta(id, patch) {
   window.localStorage.setItem(CONTACT_META_STORAGE_KEY, JSON.stringify(all));
 }
 
+function idList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((id) => String(id || "")).filter(Boolean);
+}
+
 export function metaFromContact(contact) {
   return {
     contactType: contact.contactType || "Prospect",
@@ -38,6 +43,8 @@ export function metaFromContact(contact) {
     notes: contact.notes || "",
     lastActivityAt: contact.lastActivityAt || null,
     department: contact.department || "",
+    relatedLeadIds: idList(contact.relatedLeadIds),
+    relatedDealIds: idList(contact.relatedDealIds),
   };
 }
 
@@ -79,6 +86,8 @@ export function fromApiContact(row, options = {}) {
     notes: mergedMeta.notes,
     lastActivityAt: mergedMeta.lastActivityAt,
     department: mergedMeta.department,
+    relatedLeadIds: idList(mergedMeta.relatedLeadIds),
+    relatedDealIds: idList(mergedMeta.relatedDealIds),
   };
 }
 

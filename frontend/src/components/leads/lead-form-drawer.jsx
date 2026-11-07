@@ -775,8 +775,8 @@ export function LeadFormDrawer({
                 <div>
                   <Label>Industry</Label>
                   <Select
-                    value={form.industry || undefined}
-                    onValueChange={(value) => update("industry", value)}
+                    value={form.industry || null}
+                    onValueChange={(value) => update("industry", value ?? "")}
                   >
                     <SelectTrigger className="mt-1.5 h-10 w-full">
                       <SelectValue placeholder="Optional" />

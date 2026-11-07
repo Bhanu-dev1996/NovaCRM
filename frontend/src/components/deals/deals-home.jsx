@@ -319,6 +319,20 @@ export function DealsHome() {
     if (searchParams.get("action") === "create") setFormOpen(true);
   }, [searchParams]);
 
+  const focusDealId = searchParams.get("deal");
+
+  useEffect(() => {
+    if (status !== "ready" || !focusDealId) return;
+    const row = document.getElementById(`deal-row-${focusDealId}`);
+    if (!row) return;
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    row.classList.add("bg-primary-50/80", "dark:bg-primary-950/40");
+    const timer = window.setTimeout(() => {
+      row.classList.remove("bg-primary-50/80", "dark:bg-primary-950/40");
+    }, 3200);
+    return () => window.clearTimeout(timer);
+  }, [status, focusDealId, rows]);
+
   function openCreate() {
     setFormOpen(true);
     router.replace("/deals?action=create", { scroll: false });
@@ -368,7 +382,15 @@ export function DealsHome() {
             </TableHeader>
             <TableBody>
               {rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  id={`deal-row-${row.id}`}
+                  className={
+                    focusDealId === row.id
+                      ? "bg-primary-50/80 dark:bg-primary-950/40"
+                      : undefined
+                  }
+                >
                   <TableCell className="px-4 py-3 font-semibold">
                     {row.name}
                   </TableCell>

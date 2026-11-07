@@ -47,6 +47,7 @@ import {
 } from "recharts";
 
 import { apiFetch } from "@/lib/api";
+import { crmType } from "@/lib/crm-typography";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -72,11 +73,14 @@ import {
   RECENT_ACTIVITY,
   REVENUE_METRICS,
   SALES_OWNERS,
-  buildRevenueView,
   TEAM_PERFORMANCE,
-  TOTAL_LEADS_COUNT,
-  UPCOMING_MEETINGS,
 } from "@/components/dashboard/dashboard-data";
+import {
+  buildDashboardView,
+  buildSalesOwners,
+  mapWorkspaceMembers,
+} from "@/components/dashboard/dashboard-metrics";
+import { fromApiLead } from "@/components/leads/lead-api";
 
 function greetingForNow() {
   const hour = new Date().getHours();
@@ -130,9 +134,9 @@ function Sparkline({ id, data, positive }) {
   const color = positive ? "#10b981" : "#dc2626";
   const gradientId = `spark-${id}`;
   return (
-    <div className="h-8 w-[72px] shrink-0">
-      <ResponsiveContainer width={72} height={32}>
-        <AreaChart data={chartData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+    <div className="h-8 w-[72px] max-w-[72px] shrink-0 overflow-hidden">
+      <ResponsiveContainer width="100%" height={32}>
+        <AreaChart data={chartData} margin={{ top: 2, right: 2, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity={0.3} />
@@ -180,7 +184,7 @@ function KpiCard({ card }) {
   const TrendIcon = card.deltaPositive ? ArrowUpRight : ArrowDownRight;
   const showSpark = !card.hideSpark && card.spark?.length;
   return (
-    <div className="flex min-w-0 flex-col rounded-[20px] border border-neutral-200/70 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] dark:border-neutral-800 dark:bg-neutral-950">
+    <div className="flex min-w-0 flex-col overflow-hidden rounded-[20px] border border-neutral-200/70 bg-white p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04)] dark:border-neutral-800 dark:bg-neutral-950">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[12px] font-medium text-neutral-500 sm:text-[13px] dark:text-neutral-400">
@@ -204,20 +208,22 @@ function KpiCard({ card }) {
       </div>
       <div
         className={cn(
-          "mt-auto flex min-w-0 items-end pt-4",
-          showSpark ? "justify-between gap-2" : "justify-start"
+          "mt-auto flex min-w-0 items-end gap-2 pt-4",
+          showSpark ? "justify-between" : "justify-start"
         )}
       >
         <span
           className={cn(
-            "inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold",
+            "inline-flex min-w-0 max-w-[calc(100%-4.75rem)] items-center gap-0.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+            showSpark ? "truncate" : "shrink-0 whitespace-nowrap",
             card.deltaPositive
               ? "bg-[#ECFDF5] text-[#047857] dark:bg-emerald-950 dark:text-emerald-300"
               : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"
           )}
+          title={card.delta}
         >
           <TrendIcon className="size-3.5 shrink-0" />
-          {card.delta}
+          <span className="truncate">{card.delta}</span>
         </span>
         {showSpark ? (
           <Sparkline
@@ -447,7 +453,7 @@ export function DashboardSkeleton() {
             </div>
           </SkeletonPanel>
 
-          <SkeletonPanel className="overflow-x-auto">
+          <SkeletonPanel className="flex min-h-[340px] flex-col">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-2">
                 <SkeletonBlock className="h-4 w-48" />
@@ -455,6 +461,7 @@ export function DashboardSkeleton() {
               </div>
               <SkeletonBlock className="h-3 w-24" />
             </div>
+            <div className="min-h-[260px] flex-1 overflow-y-auto">
             <div className="w-full min-w-[720px] space-y-0">
               <div className="mb-2.5 flex gap-4 border-b border-neutral-100 pb-2.5 dark:border-neutral-800">
                 <SkeletonBlock className="h-3 w-40" />
@@ -484,6 +491,7 @@ export function DashboardSkeleton() {
                   <SkeletonBlock className="h-6 w-20 rounded-full" />
                 </div>
               ))}
+            </div>
             </div>
           </SkeletonPanel>
         </div>
@@ -564,9 +572,9 @@ export function DashboardSkeleton() {
             <SkeletonBlock className="h-3 w-32" />
           </div>
           <div className="space-y-2">
-            {UPCOMING_MEETINGS.map((meeting) => (
+            {[0, 1, 2, 3].map((index) => (
               <div
-                key={meeting.id}
+                key={`meeting-skeleton-${index}`}
                 className="flex items-center gap-2.5 rounded-xl border border-primary-100/80 bg-primary-50/70 px-2.5 py-2 dark:border-primary-900 dark:bg-primary-950/40"
               >
                 <SkeletonBlock className="size-9 shrink-0 rounded-lg" />
@@ -661,12 +669,16 @@ function NoResultsState({ onClear }) {
   );
 }
 
-function PopulatedDashboard({ firstName, greeting }) {
+function PopulatedDashboard({ firstName, greeting, workspace }) {
   const [datePreset, setDatePreset] = useState("Last 30 Days");
   const [dateRangeValue, setDateRangeValue] = useState(() =>
     resolveDateRange("Last 30 Days")
   );
-  const [owner, setOwner] = useState(SALES_OWNERS[0]);
+  const salesOwners = useMemo(
+    () => buildSalesOwners(workspace?.members),
+    [workspace?.members]
+  );
+  const [owner, setOwner] = useState("All Sales Owners");
   const [revenueMetric, setRevenueMetric] = useState("ARR");
   const [seriesVisible, setSeriesVisible] = useState({
     current: true,
@@ -674,13 +686,46 @@ function PopulatedDashboard({ firstName, greeting }) {
     nova: true,
   });
   const [completedTasks, setCompletedTasks] = useState({});
-  const [noResults, setNoResults] = useState(false);
 
-  const revenueView = useMemo(
+  useEffect(() => {
+    if (!salesOwners.length) return;
+    setOwner((current) =>
+      salesOwners.includes(current) ? current : salesOwners[0]
+    );
+  }, [salesOwners]);
+
+  const view = useMemo(
     () =>
-      buildRevenueView(revenueMetric, datePreset, owner, dateRangeValue),
-    [revenueMetric, datePreset, owner, dateRangeValue]
+      buildDashboardView({
+        leads: workspace?.leads || [],
+        deals: workspace?.deals || [],
+        tasks: workspace?.tasks || [],
+        activities: workspace?.activities || [],
+        stages: workspace?.stages || [],
+        members: workspace?.members || [],
+        currentUserId: workspace?.currentUserId || "",
+        ownerLabel: owner,
+        range: dateRangeValue,
+        revenueMetric,
+      }),
+    [workspace, owner, dateRangeValue, revenueMetric]
   );
+
+  const {
+    kpiCards,
+    pipelineStages,
+    leadSources,
+    totalLeadsCount,
+    teamPerformance,
+    recentActivity,
+    myTasks,
+    upcomingMeetings,
+    novaCopilot,
+    revenueView,
+  } = view;
+
+  const noResults =
+    view.isEmpty && owner !== "All Sales Owners";
 
   function toggleTask(id) {
     setCompletedTasks((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -700,26 +745,23 @@ function PopulatedDashboard({ firstName, greeting }) {
   function applyDateRange({ preset, range }) {
     setDatePreset(preset);
     setDateRangeValue(range);
-    setNoResults(owner === "Riley Chen" && preset === "Last 7 Days");
   }
 
   function applyOwner(nextOwner) {
     setOwner(nextOwner);
-    setNoResults(nextOwner === "Riley Chen" && datePreset === "Last 7 Days");
   }
 
   function clearFilters() {
     setDatePreset("Last 30 Days");
     setDateRangeValue(resolveDateRange("Last 30 Days"));
-    setOwner(SALES_OWNERS[0]);
-    setNoResults(false);
+    setOwner(salesOwners[0] || "All Sales Owners");
   }
 
   function handleExport() {
     const rangeLabel = formatDateRangeLabel(datePreset, dateRangeValue);
     const rows = [
       ["Metric", "Value", "Change", "Date range", "Sales owner"],
-      ...KPI_CARDS.map((card) => [
+      ...kpiCards.map((card) => [
         card.label,
         card.fullValue || card.value,
         card.delta,
@@ -764,7 +806,9 @@ function PopulatedDashboard({ firstName, greeting }) {
     <div className="mx-auto flex w-full min-w-0 max-w-[1440px] flex-col gap-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <nav className="mb-2 flex items-center gap-1.5 text-[12px] text-primary-500/80">
+          <nav
+            className={cn("mb-2 flex items-center gap-1.5", crmType.breadcrumb)}
+          >
             <span>Workspace</span>
             <span className="text-primary-300">/</span>
             <span className="font-medium text-primary-700 dark:text-primary-300">
@@ -803,7 +847,7 @@ function PopulatedDashboard({ firstName, greeting }) {
               sideOffset={8}
               className="min-w-[12rem] p-1.5"
             >
-              {SALES_OWNERS.map((name) => (
+              {salesOwners.map((name) => (
                 <SelectItem key={name} value={name} className="px-2.5 py-1.5">
                   {name}
                 </SelectItem>
@@ -831,7 +875,7 @@ function PopulatedDashboard({ firstName, greeting }) {
       ) : (
         <>
           <div className="grid w-full min-w-0 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            {KPI_CARDS.map((card) => (
+            {kpiCards.map((card) => (
               <KpiCard key={card.id} card={card} />
             ))}
           </div>
@@ -1018,7 +1062,7 @@ function PopulatedDashboard({ firstName, greeting }) {
                 }
               />
               <div className="space-y-4">
-                {PIPELINE_STAGES.map((stage) => (
+                {(pipelineStages.length ? pipelineStages : []).map((stage) => (
                   <Link
                     key={stage.id}
                     href={stage.href}
@@ -1074,7 +1118,7 @@ function PopulatedDashboard({ firstName, greeting }) {
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={LEAD_SOURCES}
+                          data={leadSources.length ? leadSources : [{ name: "—", value: 100, color: "#cbd5e1" }]}
                           dataKey="value"
                           nameKey="name"
                           innerRadius={62}
@@ -1082,7 +1126,7 @@ function PopulatedDashboard({ firstName, greeting }) {
                           paddingAngle={2}
                           strokeWidth={0}
                         >
-                          {LEAD_SOURCES.map((source) => (
+                          {(leadSources.length ? leadSources : [{ name: "—", value: 100, color: "#cbd5e1" }]).map((source) => (
                             <Cell key={source.name} fill={source.color} />
                           ))}
                         </Pie>
@@ -1098,13 +1142,13 @@ function PopulatedDashboard({ firstName, greeting }) {
                     </ResponsiveContainer>
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                       <p className="text-[22px] font-bold tracking-[-0.02em] text-neutral-900 dark:text-neutral-50">
-                        {TOTAL_LEADS_COUNT.toLocaleString("en-US")}
+                        {totalLeadsCount.toLocaleString("en-US")}
                       </p>
                       <p className="text-[11px] text-neutral-400">Total Leads</p>
                     </div>
                   </div>
                   <ul className="grid w-full grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-                    {LEAD_SOURCES.map((source) => (
+                    {leadSources.map((source) => (
                       <li key={source.name}>
                         <Link
                           href={source.href}
@@ -1130,7 +1174,7 @@ function PopulatedDashboard({ firstName, greeting }) {
                 </div>
               </Panel>
 
-              <Panel className="overflow-x-auto">
+              <Panel className="flex min-h-[340px] min-w-0 flex-col">
                 <PanelHeader
                   title="Sales Team Performance"
                   subtitle="Quota achievement and deal closures by representative."
@@ -1143,9 +1187,11 @@ function PopulatedDashboard({ firstName, greeting }) {
                     </Link>
                   }
                 />
-                <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-[13px]">
-                  <thead>
-                    <tr className="border-b border-neutral-100 text-[11px] tracking-wide text-neutral-400 uppercase dark:border-neutral-800">
+                <ScrollArea className="h-[min(320px,45vh)] min-h-[260px] shrink-0">
+                  <div className="overflow-x-auto pr-3 pb-1">
+                    <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-[13px]">
+                      <thead className="sticky top-0 z-10 bg-white dark:bg-neutral-950">
+                        <tr className="border-b border-neutral-100 text-[11px] tracking-wide text-neutral-400 uppercase dark:border-neutral-800">
                       <th className="pb-2.5 pr-6 font-semibold">
                         Sales Representative
                       </th>
@@ -1156,7 +1202,7 @@ function PopulatedDashboard({ firstName, greeting }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {TEAM_PERFORMANCE.map((row) => (
+                    {teamPerformance.map((row) => (
                       <tr
                         key={row.name}
                         className="border-b border-neutral-50 last:border-0 dark:border-neutral-900"
@@ -1226,7 +1272,9 @@ function PopulatedDashboard({ firstName, greeting }) {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                    </table>
+                  </div>
+                </ScrollArea>
               </Panel>
             </div>
 
@@ -1245,7 +1293,7 @@ function PopulatedDashboard({ firstName, greeting }) {
               <div className="min-h-0 flex-1">
                 <ScrollArea className="h-[420px] xl:h-[520px]">
                   <div className="flex flex-col gap-3 pr-3.5 pb-1">
-                    {NOVA_COPILOT.map((item) => {
+                    {novaCopilot.map((item) => {
                       const ActionIcon = copilotActionIcon(item.actionIcon);
                       return (
                         <div
@@ -1309,7 +1357,7 @@ function PopulatedDashboard({ firstName, greeting }) {
               </div>
               <ScrollArea className="h-[220px]">
                 <ul className="space-y-1 pr-3.5 pb-1">
-                  {RECENT_ACTIVITY.map((item) => {
+                  {(recentActivity.length ? recentActivity : []).map((item) => {
                     const { Icon, className: iconClass } = activityStyle(
                       item.type
                     );
@@ -1357,7 +1405,7 @@ function PopulatedDashboard({ firstName, greeting }) {
               </div>
               <ScrollArea className="h-[220px]">
                 <ul className="space-y-2 pr-3.5 pb-1">
-                  {MY_TASKS.map((task) => {
+                  {(myTasks.length ? myTasks : []).map((task) => {
                     const done = Boolean(completedTasks[task.id]);
                     const priorityClass =
                       task.priority === "HIGH"
@@ -1438,7 +1486,7 @@ function PopulatedDashboard({ firstName, greeting }) {
               </div>
               <ScrollArea className="h-[220px]">
                 <ul className="space-y-2 pr-3.5 pb-1">
-                  {UPCOMING_MEETINGS.map((meeting) => {
+                  {(upcomingMeetings.length ? upcomingMeetings : []).map((meeting) => {
                     const MeetingIcon =
                       meeting.icon === "shield"
                         ? Shield
@@ -1491,6 +1539,7 @@ export function DashboardHome() {
   const [user, setUser] = useState(null);
   const [greeting, setGreeting] = useState("Welcome");
   const [status, setStatus] = useState("loading");
+  const [workspace, setWorkspace] = useState(null);
 
   useEffect(() => {
     setGreeting(greetingForNow());
@@ -1512,14 +1561,50 @@ export function DashboardHome() {
     async function load() {
       setStatus("loading");
       try {
-        const me = await apiFetch("/api/auth/me");
+        const [
+          me,
+          workspaceRes,
+          leadList,
+          dealList,
+          taskList,
+          activityList,
+          stageList,
+          members,
+        ] = await Promise.all([
+          apiFetch("/api/auth/me"),
+          apiFetch("/api/workspace"),
+          apiFetch("/api/leads?order_by=created_at&limit=500"),
+          apiFetch("/api/deals?order_by=created_at&limit=500"),
+          apiFetch("/api/tasks?order_by=due_at&limit=200"),
+          apiFetch("/api/activities?order_by=created_at&limit=100"),
+          apiFetch("/api/pipeline-stages?order_by=position&limit=50"),
+          apiFetch("/api/workspace/members"),
+        ]);
         if (cancelled) return;
+        const leads = (leadList.data || []).map(fromApiLead);
+        const deals = dealList.data || [];
+        const tasks = taskList.data || [];
+        const activities = activityList.data || [];
+        const stages = stageList.data || [];
+        const memberRows = mapWorkspaceMembers(members.data || []);
+        const nextWorkspace = {
+          leads,
+          deals,
+          tasks,
+          activities,
+          stages,
+          members: memberRows,
+          currentUserId: workspaceRes?.user?.id || "",
+        };
         setUser(me.user);
-        setStatus("ready");
+        setWorkspace(nextWorkspace);
+        const isEmpty =
+          !leads.length && !deals.length && !tasks.length && !activities.length;
+        setStatus(isEmpty ? "empty" : "ready");
       } catch {
         if (!cancelled) {
           setUser({ name: "Alex" });
-          setStatus(forcedState === "error" ? "error" : "ready");
+          setStatus(forcedState === "error" ? "error" : "error");
         }
       }
     }
@@ -1544,6 +1629,10 @@ export function DashboardHome() {
   const firstName = (user?.name || "Alex").split(" ")[0];
 
   return (
-    <PopulatedDashboard firstName={firstName} greeting={greeting} />
+    <PopulatedDashboard
+      firstName={firstName}
+      greeting={greeting}
+      workspace={workspace}
+    />
   );
 }

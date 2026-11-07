@@ -1,25 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { format, parseISO } from "date-fns";
-import {
-  Activity,
-  ArrowLeft,
-  Building2,
-  Briefcase,
-  Clock,
-  Mail,
-  Phone,
-  Sparkles,
-  SquarePen,
-  StickyNote,
-  Upload,
-  User,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { ContactDetailPage } from "@/components/contacts/contact-detail-page";
 import { ContactFormDrawer } from "@/components/contacts/contact-form-drawer";
 import {
   fromApiContact,
@@ -28,107 +12,222 @@ import {
   toApiContact,
 } from "@/components/contacts/contact-api";
 import {
-  CONTACT_AI_INSIGHTS,
-  CONTACT_TYPE_STYLES,
   CONTACT_OWNERS,
-  LIFECYCLE_STYLES,
+  demoEnrichmentForEmail,
+  demoLinkedDealSpecsForContact,
   fullName,
-  initials,
-  ownerById,
-  tagStyleAt,
 } from "@/components/contacts/contacts-data";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { PageBreadcrumb } from "@/components/shared/page-breadcrumb";
+import { fromApiLead } from "@/components/leads/lead-api";
 import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetFooter,
-} from "@/components/ui/sheet";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+  buildNextRelated,
+  buildUnlinkLeadPatch,
+} from "@/components/leads/lead-related-data";
+import { LeadDetailSkeleton } from "@/components/leads/lead-skeletons";
 import { apiFetch } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
-function formatDate(value) {
-  if (!value) return "—";
-  try {
-    return format(parseISO(String(value).slice(0, 10)), "MMM d, yyyy");
-  } catch {
-    return value;
-  }
+export { LeadDetailSkeleton as ContactDetailSkeleton } from "@/components/leads/lead-skeletons";
+
+function withContactMeta(saved, contact) {
+  return {
+    ...saved,
+    contactType: contact.contactType,
+    lifecycle: contact.lifecycle,
+    tags: contact.tags,
+    linkedIn: contact.linkedIn,
+    notes: contact.notes ?? saved.notes,
+    department: contact.department,
+    lastActivityAt: contact.lastActivityAt || saved.lastActivityAt,
+    ownerId: contact.ownerId || saved.ownerId,
+    relatedLeadIds: contact.relatedLeadIds || saved.relatedLeadIds || [],
+    relatedDealIds: contact.relatedDealIds || saved.relatedDealIds || [],
+  };
 }
 
-const DEMO_ACTIVITIES = [
-  {
-    id: "a1",
-    type: "email",
-    title: "Follow-up on implementation timeline",
-    time: "Oct 28 · 2:15 PM",
-    actor: "You",
-  },
-  {
-    id: "a2",
-    type: "call",
-    title: "Discovery call — 32 min",
-    time: "Oct 22 · 11:00 AM",
-    actor: "Alex Morgan",
-  },
-  {
-    id: "a3",
-    type: "note",
-    title: "Added to Q4 account plan",
-    time: "Oct 18 · 4:40 PM",
-    actor: "System",
-  },
-];
-
 export function ContactDetailView({ contactId }) {
-  const router = useRouter();
   const [loadStatus, setLoadStatus] = useState("loading");
   const [contact, setContact] = useState(null);
   const [companies, setCompanies] = useState([]);
-  const [owners, setOwners] = useState(CONTACT_OWNERS);
+  const [contacts, setContacts] = useState([]);
+  const [leads, setLeads] = useState([]);
   const [deals, setDeals] = useState([]);
-  const [tab, setTab] = useState("overview");
+  const [tasks, setTasks] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [owners, setOwners] = useState(CONTACT_OWNERS);
+  const [currentUserId, setCurrentUserId] = useState("");
   const [editOpen, setEditOpen] = useState(false);
-  const [emailOpen, setEmailOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [aiOpen, setAiOpen] = useState(true);
-  const [emailSubject, setEmailSubject] = useState("");
-  const [emailBody, setEmailBody] = useState("");
+  const demoBootstrapRef = useRef(false);
+
+  useEffect(() => {
+    demoBootstrapRef.current = false;
+  }, [contactId]);
+
+  useEffect(() => {
+    if (loadStatus !== "ready" || !contact || demoBootstrapRef.current) return;
+
+    const demo = demoEnrichmentForEmail(contact.email);
+    const dealSpecs = demoLinkedDealSpecsForContact(contact.email);
+    const leadEmails = (demo?.linkedLeadEmails || []).map((e) =>
+      String(e).trim().toLowerCase()
+    );
+    const dealNameKeys = (demo?.linkedDealNames || []).map((n) =>
+      String(n).trim().toLowerCase()
+    );
+    if (!leadEmails.length && !dealNameKeys.length && !dealSpecs.length) {
+      demoBootstrapRef.current = true;
+      return;
+    }
+
+    demoBootstrapRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      let dealRows = [...deals];
+
+      for (const spec of dealSpecs) {
+        const key = spec.name.trim().toLowerCase();
+        const exists = dealRows.some(
+          (row) => String(row.name || "").trim().toLowerCase() === key
+        );
+        if (exists) continue;
+        try {
+          const created = await apiFetch("/api/deals", {
+            method: "POST",
+            body: JSON.stringify({
+              name: spec.name,
+              amount: spec.amount,
+              currency: spec.currency || "USD",
+              contact_id: contact.id,
+              company_id: contact.companyId || null,
+              owner_id: currentUserId || null,
+              status: "open",
+            }),
+          });
+          dealRows = [created.data, ...dealRows];
+        } catch {
+          /* keep going if one deal fails */
+        }
+      }
+
+      if (cancelled) return;
+
+      const leadIds = leadEmails
+        .map(
+          (email) =>
+            leads.find((row) => String(row.email || "").toLowerCase() === email)
+              ?.id
+        )
+        .filter(Boolean)
+        .map(String);
+
+      const dealIds = dealNameKeys
+        .map((name) =>
+          dealRows.find(
+            (row) => String(row.name || "").trim().toLowerCase() === name
+          )?.id
+        )
+        .filter(Boolean)
+        .map(String);
+
+      if (dealRows.length !== deals.length) {
+        setDeals(dealRows);
+      }
+
+      const relatedLeadIds = [
+        ...new Set([...(contact.relatedLeadIds || []), ...leadIds]),
+      ];
+      const relatedDealIds = [
+        ...new Set([...(contact.relatedDealIds || []), ...dealIds]),
+      ];
+      const contactChanged =
+        relatedLeadIds.length !== (contact.relatedLeadIds || []).length ||
+        relatedDealIds.length !== (contact.relatedDealIds || []).length ||
+        relatedLeadIds.some(
+          (id) => !(contact.relatedLeadIds || []).includes(id)
+        ) ||
+        relatedDealIds.some(
+          (id) => !(contact.relatedDealIds || []).includes(id)
+        );
+
+      if (contactChanged) {
+        const merged = { ...contact, relatedLeadIds, relatedDealIds };
+        persistContactMeta(merged);
+        setContact(merged);
+      }
+
+      for (const dealId of dealIds) {
+        for (const row of leads) {
+          const linked =
+            leadIds.includes(String(row.id)) ||
+            leadEmails.includes(String(row.email || "").trim().toLowerCase());
+          if (!linked) continue;
+          if ((row.related?.dealIds || []).map(String).includes(String(dealId))) {
+            continue;
+          }
+          try {
+            const related = buildNextRelated(row, "deal", dealId);
+            const leadResponse = await apiFetch(`/api/leads/${row.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ related }),
+            });
+            const savedLead = fromApiLead(leadResponse.data);
+            if (!cancelled) {
+              setLeads((prev) =>
+                prev.map((item) =>
+                  item.id === savedLead.id ? savedLead : item
+                )
+              );
+            }
+          } catch {
+            /* optional lead sync */
+          }
+        }
+      }
+
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadStatus, contact, contactId, leads, deals, currentUserId]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoadStatus("loading");
       try {
-        const [detail, companyList, members, dealList] = await Promise.all([
+        const [
+          detail,
+          companyList,
+          contactList,
+          leadList,
+          dealList,
+          taskList,
+          activityList,
+          members,
+          workspace,
+        ] = await Promise.all([
           apiFetch(`/api/contacts/${contactId}`),
           apiFetch("/api/companies?order_by=name&limit=200"),
-          apiFetch("/api/workspace/members"),
+          apiFetch("/api/contacts?order_by=created_at&limit=200"),
+          apiFetch("/api/leads?order_by=created_at&limit=200"),
           apiFetch("/api/deals?order_by=created_at&limit=200"),
+          apiFetch("/api/tasks?order_by=due_at&limit=200"),
+          apiFetch("/api/activities?type=meeting&order_by=due_at&limit=200"),
+          apiFetch("/api/workspace/members"),
+          apiFetch("/api/workspace"),
         ]);
         if (cancelled) return;
         const mappedOwners = (members.data || []).map(mapMemberToOwner);
         setOwners(mappedOwners.length ? mappedOwners : CONTACT_OWNERS);
         setCompanies(companyList.data || []);
-        setContact(fromApiContact(detail.data));
+        setContacts(contactList.data || []);
+        setLeads((leadList.data || []).map(fromApiLead));
         setDeals(dealList.data || []);
+        setTasks(taskList.data || []);
+        setActivities(activityList.data || []);
+        setContact(fromApiContact(detail.data));
+        setCurrentUserId(workspace?.user?.id || "");
         setLoadStatus("ready");
       } catch (error) {
         if (!cancelled) {
@@ -148,25 +247,13 @@ export function ContactDetailView({ contactId }) {
     [companies, contact?.companyId]
   );
 
-  const owner = ownerById(contact?.ownerId, owners);
-  const linkedDeals = useMemo(
+  const existingEmails = useMemo(
     () =>
-      deals.filter(
-        (deal) =>
-          deal.contact_id === contactId ||
-          deal.primary_contact_id === contactId
-      ),
-    [deals, contactId]
+      contacts
+        .map((row) => fromApiContact(row).email)
+        .filter(Boolean),
+    [contacts]
   );
-
-  function openEmailComposer() {
-    if (!contact) return;
-    setEmailSubject(`Re: ${fullName(contact)}`);
-    setEmailBody(
-      `Hi ${contact.firstName || fullName(contact)},\n\nThanks for connecting. I wanted to follow up on our last conversation and share next steps for ${company?.name || "your team"}.\n\nBest,\nNovaCRM`
-    );
-    setEmailOpen(true);
-  }
 
   async function handleSave(updated, { isEdit }) {
     const payload = toApiContact(updated);
@@ -177,66 +264,252 @@ export function ContactDetailView({ contactId }) {
         })
       : await apiFetch("/api/contacts", {
           method: "POST",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            ...payload,
+            owner_id: updated.ownerId || currentUserId || null,
+          }),
         });
     const saved = fromApiContact(response.data);
-    const merged = {
-      ...saved,
-      contactType: updated.contactType,
-      lifecycle: updated.lifecycle,
-      tags: updated.tags,
-      linkedIn: updated.linkedIn,
-      notes: updated.notes,
-      lastActivityAt: updated.lastActivityAt || saved.lastActivityAt,
-      department: updated.department,
-    };
+    const merged = withContactMeta(saved, { ...contact, ...updated });
     persistContactMeta(merged);
     setContact(merged);
     toast.success(isEdit ? "Contact updated" : "Contact created");
+    setEditOpen(false);
   }
 
-  async function logEmailActivity() {
+  async function handleAddNote(noteBlock) {
     if (!contact) return;
-    try {
-      await apiFetch("/api/activities", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "email",
-          subject: emailSubject,
-          body: emailBody,
-          contact_id: contact.id,
-        }),
-      });
-      const next = {
-        ...contact,
-        lastActivityAt: new Date().toISOString().slice(0, 10),
-      };
-      persistContactMeta(next);
-      setContact(next);
-      setEmailOpen(false);
-      toast.success("Email logged to activity");
-    } catch (error) {
-      toast.error(error.message || "Could not log email");
+    const notes = contact.notes ? `${contact.notes}\n\n${noteBlock}` : noteBlock;
+    const response = await apiFetch(`/api/contacts/${contact.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ notes }),
+    });
+    const saved = fromApiContact(response.data);
+    const merged = withContactMeta(saved, { ...contact, notes });
+    persistContactMeta(merged);
+    setContact(merged);
+  }
+
+  async function handleLinkLead(leadId) {
+    if (!contact) return;
+    const lead = leads.find((row) => String(row.id) === String(leadId));
+    if (!lead) return;
+    const relatedLeadIds = [
+      ...new Set([...(contact.relatedLeadIds || []), String(leadId)]),
+    ];
+    const related = buildNextRelated(lead, "contact", contact.id);
+    const response = await apiFetch(`/api/leads/${leadId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ related }),
+    });
+    const savedLead = fromApiLead(response.data);
+    setLeads((prev) =>
+      prev.map((row) => (row.id === savedLead.id ? savedLead : row))
+    );
+    const merged = { ...contact, relatedLeadIds };
+    persistContactMeta(merged);
+    setContact(merged);
+    toast.success("Lead linked");
+  }
+
+  async function handleUnlinkLead(leadId) {
+    if (!contact) return;
+    const lead = leads.find((row) => String(row.id) === String(leadId));
+    const relatedLeadIds = (contact.relatedLeadIds || []).filter(
+      (id) => String(id) !== String(leadId)
+    );
+    if (lead) {
+      const patch = buildUnlinkLeadPatch(lead, "contact", { id: contact.id });
+      if (patch) {
+        const response = await apiFetch(`/api/leads/${leadId}`, {
+          method: "PATCH",
+          body: JSON.stringify(patch),
+        });
+        const savedLead = fromApiLead(response.data);
+        setLeads((prev) =>
+          prev.map((row) => (row.id === savedLead.id ? savedLead : row))
+        );
+      }
     }
+    const merged = { ...contact, relatedLeadIds };
+    persistContactMeta(merged);
+    setContact(merged);
+  }
+
+  async function handleLinkDeal(dealId) {
+    if (!contact) return;
+    const relatedDealIds = [
+      ...new Set([...(contact.relatedDealIds || []), String(dealId)]),
+    ];
+    const response = await apiFetch(`/api/deals/${dealId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ contact_id: contact.id }),
+    });
+    const updated = response.data;
+    setDeals((prev) =>
+      prev.map((row) => (row.id === updated.id ? updated : row))
+    );
+    const merged = { ...contact, relatedDealIds };
+    persistContactMeta(merged);
+    setContact(merged);
+
+    const contactId = String(contact.id);
+    const email = String(contact.email || "").trim().toLowerCase();
+    const manualLeadIds = new Set((contact.relatedLeadIds || []).map(String));
+
+    await Promise.all(
+      leads.map(async (row) => {
+        const linked =
+          manualLeadIds.has(String(row.id)) ||
+          String(row.convertedContactId) === contactId ||
+          (email &&
+            String(row.email || "").trim().toLowerCase() === email) ||
+          (row.related?.contactIds || []).map(String).includes(contactId);
+        if (!linked) return;
+        if ((row.related?.dealIds || []).map(String).includes(String(dealId))) {
+          return;
+        }
+        try {
+          const related = buildNextRelated(row, "deal", dealId);
+          const leadResponse = await apiFetch(`/api/leads/${row.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ related }),
+          });
+          const savedLead = fromApiLead(leadResponse.data);
+          setLeads((prev) =>
+            prev.map((item) => (item.id === savedLead.id ? savedLead : item))
+          );
+        } catch {
+          /* keep contact link even if lead sync fails */
+        }
+      })
+    );
+
+    toast.success("Deal linked");
+  }
+
+  async function handleUnlinkDeal(dealId) {
+    if (!contact) return;
+    const deal = deals.find((row) => String(row.id) === String(dealId));
+    const relatedDealIds = (contact.relatedDealIds || []).filter(
+      (id) => String(id) !== String(dealId)
+    );
+    if (deal && String(deal.contact_id) === String(contact.id)) {
+      const response = await apiFetch(`/api/deals/${dealId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ contact_id: null }),
+      });
+      const updated = response.data;
+      setDeals((prev) =>
+        prev.map((row) => (row.id === updated.id ? updated : row))
+      );
+    }
+    const merged = { ...contact, relatedDealIds };
+    persistContactMeta(merged);
+    setContact(merged);
+  }
+
+  async function handleCreateTask(payload) {
+    const response = await apiFetch("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const created = response.data;
+    setTasks((prev) => [created, ...prev.filter((row) => row.id !== created.id)]);
+    toast.success("Task created");
+    return created;
+  }
+
+  async function handleUpdateTask(taskId, payload) {
+    const response = await apiFetch(`/api/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    const updated = response.data;
+    setTasks((prev) =>
+      prev.map((row) => (row.id === updated.id ? updated : row))
+    );
+    toast.success("Task updated");
+    return updated;
+  }
+
+  async function handleDeleteTask(taskId) {
+    await apiFetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+    setTasks((prev) => prev.filter((row) => row.id !== taskId));
+    toast.success("Task deleted");
+  }
+
+  async function handleCreateMeeting(payload) {
+    const response = await apiFetch("/api/activities", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const created = response.data;
+    setActivities((prev) => [
+      created,
+      ...prev.filter((row) => row.id !== created.id),
+    ]);
+    toast.success("Meeting scheduled");
+    return created;
+  }
+
+  async function handleUpdateMeeting(meetingId, payload) {
+    const response = await apiFetch(`/api/activities/${meetingId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+    const updated = response.data;
+    setActivities((prev) =>
+      prev.map((row) => (row.id === updated.id ? updated : row))
+    );
+    toast.success("Meeting updated");
+    return updated;
+  }
+
+  async function handleDeleteMeeting(meetingId) {
+    await apiFetch(`/api/activities/${meetingId}`, { method: "DELETE" });
+    setActivities((prev) => prev.filter((row) => row.id !== meetingId));
+    toast.success("Meeting deleted");
+  }
+
+  async function handleUnlinkCompany() {
+    if (!contact) return;
+    const response = await apiFetch(`/api/contacts/${contact.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ company_id: null }),
+    });
+    const saved = fromApiContact(response.data);
+    const merged = withContactMeta(saved, { ...contact, companyId: "" });
+    persistContactMeta(merged);
+    setContact(merged);
   }
 
   if (loadStatus === "loading") {
     return (
-      <div className="mx-auto max-w-[1200px] animate-pulse space-y-6 p-6">
-        <div className="h-8 w-48 rounded-lg bg-muted" />
-        <div className="h-32 rounded-2xl bg-muted" />
-        <div className="h-64 rounded-2xl bg-muted" />
+      <div className="mx-auto flex w-full min-w-0 max-w-[1440px] flex-col gap-4 pb-10">
+        <PageBreadcrumb
+          items={[
+            { href: "/contacts", label: "Contacts" },
+            { label: "Loading…" },
+          ]}
+        />
+        <LeadDetailSkeleton />
       </div>
     );
   }
 
   if (loadStatus === "error" || !contact) {
     return (
-      <div className="mx-auto max-w-lg py-16 text-center">
-        <p className="text-muted-foreground">Contact not found.</p>
-        <Button className="mt-4" variant="outline" onClick={() => router.push("/contacts")}>
-          Back to contacts
-        </Button>
+      <div className="mx-auto w-full min-w-0 max-w-[1440px] pb-10">
+        <PageBreadcrumb
+          items={[
+            { href: "/contacts", label: "Contacts" },
+            { label: "Not found" },
+          ]}
+        />
+        <p className="py-16 text-center text-muted-foreground">
+          Contact not found.
+        </p>
       </div>
     );
   }
@@ -244,365 +517,35 @@ export function ContactDetailView({ contactId }) {
   const name = fullName(contact);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 pb-10">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 rounded-lg"
-          onClick={() => router.push("/contacts")}
-        >
-          <ArrowLeft className="size-3.5" />
-          Contacts
-        </Button>
-        <nav className="text-[12px] text-muted-foreground">
-          Workspace / Contacts / <span className="text-foreground">{name}</span>
-        </nav>
-      </div>
+    <div className="mx-auto flex w-full min-w-0 max-w-[1440px] flex-col gap-4 pb-10">
+      <PageBreadcrumb
+        items={[{ href: "/contacts", label: "Contacts" }, { label: name }]}
+      />
 
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 flex-1 space-y-6">
-          <Card className="overflow-hidden py-0">
-            <CardContent className="p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex gap-4">
-                  <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary-50 text-lg font-bold text-primary-700 dark:bg-primary-950 dark:text-primary-300">
-                    {initials(contact)}
-                  </span>
-                  <div className="min-w-0">
-                    <h1 className="text-2xl font-bold tracking-[-0.03em]">{name}</h1>
-                    <p className="mt-0.5 text-[14px] text-muted-foreground">
-                      {contact.title || "—"}
-                      {company ? ` · ${company.name}` : ""}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "border-transparent",
-                          CONTACT_TYPE_STYLES[contact.contactType] ||
-                            CONTACT_TYPE_STYLES.Other
-                        )}
-                      >
-                        {contact.contactType}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "border-transparent",
-                          LIFECYCLE_STYLES[contact.lifecycle] ||
-                            LIFECYCLE_STYLES.Inactive
-                        )}
-                      >
-                        {contact.lifecycle}
-                      </Badge>
-                      {contact.tags?.map((tag, i) => (
-                        <Badge
-                          key={tag}
-                          variant="outline"
-                          className={cn("border-transparent", tagStyleAt(i))}
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 rounded-lg"
-                    onClick={openEmailComposer}
-                  >
-                    <Mail className="size-3.5" />
-                    Email
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 rounded-lg"
-                    onClick={() => setActivityOpen(true)}
-                  >
-                    <Activity className="size-3.5" />
-                    Activity log
-                  </Button>
-                  <Button
-                    type="button"
-                    className="h-9 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
-                    onClick={() => setEditOpen(true)}
-                  >
-                    <SquarePen className="size-3.5" />
-                    Edit
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {[
-                  { icon: Mail, label: "Email", value: contact.email || "—" },
-                  { icon: Phone, label: "Phone", value: contact.phone || "—" },
-                  {
-                    icon: User,
-                    label: "Owner",
-                    value: owner.name,
-                  },
-                  {
-                    icon: Clock,
-                    label: "Last activity",
-                    value: formatDate(contact.lastActivityAt),
-                  },
-                ].map((row) => (
-                  <div
-                    key={row.label}
-                    className="rounded-xl border border-neutral-200/80 p-3 dark:border-neutral-800"
-                  >
-                    <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
-                      <row.icon className="size-3.5" />
-                      {row.label}
-                    </div>
-                    <p className="mt-1 truncate text-[13px] font-medium">{row.value}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList className="h-10 w-full justify-start rounded-xl bg-muted/50 p-1">
-              {[
-                ["overview", "Overview"],
-                ["activity", "Activity"],
-                ["deals", "Deals"],
-                ["notes", "Notes"],
-                ["files", "Files"],
-              ].map(([value, label]) => (
-                <TabsTrigger key={value} value={value} className="rounded-lg px-4">
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-
-            <TabsContent value="overview" className="mt-4 space-y-4">
-              <Card>
-                <CardContent className="p-5">
-                  <h3 className="text-sm font-semibold">About</h3>
-                  <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {[
-                      ["Department", contact.department || "—"],
-                      ["LinkedIn", contact.linkedIn || "—"],
-                      ["Created", formatDate(contact.createdAt)],
-                      ["Updated", formatDate(contact.updatedAt)],
-                    ].map(([label, value]) => (
-                      <div key={label}>
-                        <dt className="text-[11px] font-medium text-muted-foreground">
-                          {label}
-                        </dt>
-                        <dd className="mt-0.5 text-[13px]">{value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold">Company</h3>
-                    <Link
-                      href="/companies"
-                      className="text-[12px] font-medium text-primary-600 hover:underline"
-                    >
-                      View all companies
-                    </Link>
-                  </div>
-                  {company ? (
-                    <div className="mt-4 flex items-center gap-3 rounded-xl border border-neutral-200/80 p-4 dark:border-neutral-800">
-                      <span className="flex size-10 items-center justify-center rounded-xl bg-muted">
-                        <Building2 className="size-4" />
-                      </span>
-                      <div>
-                        <p className="font-semibold">{company.name}</p>
-                        <p className="text-[12px] text-muted-foreground">
-                          Associated account
-                        </p>
-                      </div>
-                      <Link
-                        href={`/companies?id=${company.id}`}
-                        className="ml-auto inline-flex h-8 items-center rounded-lg border border-input bg-background px-3 text-sm font-medium hover:bg-accent"
-                      >
-                        Open
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="mt-4 rounded-xl border border-dashed border-neutral-300 p-8 text-center dark:border-neutral-700">
-                      <Building2 className="mx-auto size-8 text-muted-foreground" />
-                      <p className="mt-2 text-sm font-medium">No company associated</p>
-                      <p className="mt-1 text-[13px] text-muted-foreground">
-                        Link this contact to an account from Companies or edit the
-                        contact profile.
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="mt-4 rounded-lg"
-                        onClick={() => setEditOpen(true)}
-                      >
-                        Associate company
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="activity" className="mt-4">
-              <Card>
-                <CardContent className="divide-y divide-border p-0">
-                  {DEMO_ACTIVITIES.map((item) => (
-                    <div key={item.id} className="flex gap-3 px-5 py-4">
-                      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
-                        <Activity className="size-3.5" />
-                      </span>
-                      <div>
-                        <p className="text-[13px] font-medium">{item.title}</p>
-                        <p className="text-[12px] text-muted-foreground">
-                          {item.time} · {item.actor}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="deals" className="mt-4">
-              <Card>
-                <CardContent className="p-5">
-                  {linkedDeals.length ? (
-                    <ul className="space-y-3">
-                      {linkedDeals.map((deal) => (
-                        <li
-                          key={deal.id}
-                          className="flex items-center gap-3 rounded-xl border border-neutral-200/80 p-3 dark:border-neutral-800"
-                        >
-                          <Briefcase className="size-4 text-muted-foreground" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium">{deal.name || "Deal"}</p>
-                            <p className="text-[12px] text-muted-foreground">
-                              {deal.stage || "Pipeline"}
-                            </p>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-[13px] text-muted-foreground">
-                      No deals linked to this contact yet.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="notes" className="mt-4">
-              <Card>
-                <CardContent className="p-5">
-                  {contact.notes ? (
-                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
-                      {contact.notes}
-                    </p>
-                  ) : (
-                    <p className="text-[13px] text-muted-foreground">
-                      No notes yet. Edit the contact to add context.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="files" className="mt-4">
-              <Card>
-                <CardContent className="flex flex-col items-center py-12 text-center">
-                  <Upload className="size-8 text-muted-foreground" />
-                  <p className="mt-2 text-sm font-medium">No files uploaded</p>
-                  <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
-                    Attach proposals, contracts, or onboarding docs (prototype).
-                  </p>
-                  <Button type="button" variant="outline" className="mt-4 rounded-lg" disabled>
-                    Upload file
-                  </Button>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-
-        {aiOpen ? (
-          <aside className="w-full shrink-0 lg:w-[320px]">
-            <Card className="sticky top-4 border-primary-200/60 bg-gradient-to-b from-primary-50/80 to-white py-0 dark:border-primary-900 dark:from-primary-950/40 dark:to-neutral-950">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex size-8 items-center justify-center rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300">
-                      <Sparkles className="size-4" />
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold">AI insights</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        For {contact.firstName || name}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    aria-label="Hide AI panel"
-                    onClick={() => setAiOpen(false)}
-                  >
-                    ×
-                  </Button>
-                </div>
-                <ul className="mt-4 space-y-3">
-                  {CONTACT_AI_INSIGHTS.map((insight) => (
-                    <li
-                      key={insight.id}
-                      className="rounded-xl border border-neutral-200/80 bg-white/80 p-3 dark:border-neutral-800 dark:bg-neutral-950/60"
-                    >
-                      <p className="text-[12px] font-semibold">{insight.title}</p>
-                      <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-                        {insight.body}
-                      </p>
-                      <Button
-                        type="button"
-                        variant="link"
-                        className="mt-1 h-auto p-0 text-[12px]"
-                        onClick={() => toast.message(insight.action)}
-                      >
-                        {insight.action}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          </aside>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="fixed bottom-6 right-6 size-11 rounded-full shadow-lg lg:hidden"
-            aria-label="Show AI insights"
-            onClick={() => setAiOpen(true)}
-          >
-            <Sparkles className="size-4" />
-          </Button>
-        )}
-      </div>
+      <ContactDetailPage
+        contact={contact}
+        company={company}
+        owners={owners}
+        contacts={contacts}
+        leads={leads}
+        deals={deals}
+        tasks={tasks}
+        activities={activities}
+        currentUserId={currentUserId}
+        onEdit={() => setEditOpen(true)}
+        onAddNote={handleAddNote}
+        onCreateTask={handleCreateTask}
+        onUpdateTask={handleUpdateTask}
+        onDeleteTask={handleDeleteTask}
+        onCreateMeeting={handleCreateMeeting}
+        onUpdateMeeting={handleUpdateMeeting}
+        onDeleteMeeting={handleDeleteMeeting}
+        onUnlinkCompany={handleUnlinkCompany}
+        onLinkLead={handleLinkLead}
+        onUnlinkLead={handleUnlinkLead}
+        onLinkDeal={handleLinkDeal}
+        onUnlinkDeal={handleUnlinkDeal}
+      />
 
       <ContactFormDrawer
         open={editOpen}
@@ -610,76 +553,11 @@ export function ContactDetailView({ contactId }) {
         initialContact={contact}
         onSave={handleSave}
         owners={owners}
+        defaultOwnerId={currentUserId}
         companies={companies}
         onCompaniesChange={setCompanies}
-        existingEmails={[]}
+        existingEmails={existingEmails}
       />
-
-      <Sheet open={emailOpen} onOpenChange={setEmailOpen}>
-        <SheetContent
-          title="Compose email"
-          description={`To ${contact.email || name}`}
-          onClose={() => setEmailOpen(false)}
-        >
-          <SheetBody className="space-y-4">
-            <div>
-              <Label htmlFor="email-subject">Subject</Label>
-              <Input
-                id="email-subject"
-                value={emailSubject}
-                onChange={(e) => setEmailSubject(e.target.value)}
-                className="mt-1.5"
-              />
-            </div>
-            <div>
-              <Label htmlFor="email-body">Message</Label>
-              <Textarea
-                id="email-body"
-                value={emailBody}
-                onChange={(e) => setEmailBody(e.target.value)}
-                rows={8}
-                className="mt-1.5"
-              />
-            </div>
-          </SheetBody>
-          <SheetFooter>
-            <Button variant="outline" onClick={() => setEmailOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-primary-600 text-white hover:bg-primary-700"
-              onClick={logEmailActivity}
-            >
-              Send & log
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
-
-      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
-        <DialogContent title="Activity log" maxWidth={512}>
-          <DialogBody className="max-h-[60vh] overflow-y-auto">
-            <ul className="space-y-4">
-              {DEMO_ACTIVITIES.map((item) => (
-                <li key={item.id} className="flex gap-3">
-                  <StickyNote className="mt-0.5 size-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">{item.title}</p>
-                    <p className="text-[12px] text-muted-foreground">
-                      {item.time} · {item.actor}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setActivityOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

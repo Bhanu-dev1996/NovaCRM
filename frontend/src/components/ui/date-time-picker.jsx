@@ -11,13 +11,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { crmControl, crmType } from "@/lib/crm-typography";
 import { cn } from "@/lib/utils";
 
 const MINUTE_STEP = 5;
 const TIME_BTN =
   "flex h-9 w-full items-center justify-center transition-colors hover:bg-muted hover:text-foreground";
 
-function combineDateAndTime(date, timeValue) {
+export function combineDateAndTime(date, timeValue) {
   if (!date) return null;
   const [hours = "0", minutes = "0"] = String(timeValue || "09:00").split(":");
   const next = new Date(date);
@@ -58,12 +59,38 @@ function formatTimeLabel(timeValue) {
   return format(date, "h:mm a");
 }
 
+const CALENDAR_PICKER_CLASS =
+  "w-full p-3 [--cell-size:2rem] [&_button[data-day]]:size-8 [&_button[data-day]]:min-w-8 [&_button[data-day]]:w-8";
+
+const CALENDAR_PICKER_CLASS_NAMES = {
+  root: "w-full",
+  months: "w-full",
+  month: "w-full gap-3",
+  month_grid: "w-full",
+  weekdays: "grid w-full grid-cols-7",
+  weekday: "flex size-8 w-full items-center justify-center text-center",
+  week: "mt-1 grid w-full grid-cols-7",
+  day: "relative flex h-8 w-full items-center justify-center p-0 aspect-auto bg-transparent data-[selected=true]:bg-transparent",
+  today: "bg-transparent data-[selected=true]:bg-transparent",
+  selected: "bg-transparent",
+};
+
+const POPOVER_CONTENT_PROPS = {
+  side: "bottom",
+  sideOffset: 8,
+  positionMethod: "fixed",
+  collisionPadding: 16,
+  collisionAvoidance: {
+    side: "flip",
+    align: "shift",
+    fallbackAxisSide: "none",
+  },
+};
+
 function TimeStepper({ label, value, display, onIncrement, onDecrement }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-      <span className="text-[11px] font-medium text-muted-foreground">
-        {label}
-      </span>
+      <span className={crmType.stepperLabel}>{label}</span>
       <div className="flex w-full flex-col overflow-hidden rounded-lg border border-border">
         <button
           type="button"
@@ -86,6 +113,195 @@ function TimeStepper({ label, value, display, onIncrement, onDecrement }) {
         </button>
       </div>
     </div>
+  );
+}
+
+export function DatePicker({
+  id,
+  value,
+  onChange,
+  onBlur,
+  placeholder = "Pick a date",
+  className,
+  disabled = false,
+  align = "start",
+  "aria-invalid": ariaInvalid,
+}) {
+  const [open, setOpen] = useState(false);
+
+  function handleOpenChange(nextOpen) {
+    setOpen(nextOpen);
+    if (!nextOpen) onBlur?.();
+  }
+  const selected =
+    value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
+
+  const label = useMemo(() => {
+    if (!selected) return placeholder;
+    return format(selected, "MMM d, yyyy");
+  }, [placeholder, selected]);
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
+        id={id}
+        disabled={disabled}
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            aria-invalid={ariaInvalid}
+            className={cn(
+              crmControl.pickerTrigger,
+              !selected && "text-muted-foreground",
+              ariaInvalid &&
+                "border-destructive ring-3 ring-destructive/20 dark:ring-destructive/40",
+              className
+            )}
+          />
+        }
+      >
+        <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate">{label}</span>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        {...POPOVER_CONTENT_PROPS}
+        className="w-(--anchor-width) min-w-(--anchor-width) max-w-[calc(100vw-24px)] overflow-hidden rounded-xl p-0"
+      >
+        <Calendar
+          mode="single"
+          selected={selected || undefined}
+          onSelect={(date) => {
+            if (!date) return;
+            onChange?.(date);
+            handleOpenChange(false);
+          }}
+          defaultMonth={selected || new Date()}
+          showOutsideDays={false}
+          className={CALENDAR_PICKER_CLASS}
+          classNames={CALENDAR_PICKER_CLASS_NAMES}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function TimePickerPanel({ value, onChange }) {
+  const draftTime = value || "09:00";
+  const { hour12, minute, period } = parseTime(draftTime);
+
+  function commitParts(nextHour12, nextMinute, nextPeriod) {
+    onChange?.(toTimeValue(nextHour12, nextMinute, nextPeriod));
+  }
+
+  return (
+    <div className="flex w-full min-w-0 items-end gap-2">
+      <TimeStepper
+        label="Hour"
+        value={hour12}
+        onIncrement={() =>
+          commitParts(hour12 === 12 ? 1 : hour12 + 1, minute, period)
+        }
+        onDecrement={() =>
+          commitParts(hour12 === 1 ? 12 : hour12 - 1, minute, period)
+        }
+      />
+      <TimeStepper
+        label="Minute"
+        value={minute}
+        onIncrement={() =>
+          commitParts(hour12, (minute + MINUTE_STEP) % 60, period)
+        }
+        onDecrement={() =>
+          commitParts(hour12, (minute - MINUTE_STEP + 60) % 60, period)
+        }
+      />
+      <div className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+        <span className={crmType.stepperLabel}>Period</span>
+        <div className="flex h-[108px] w-full flex-col overflow-hidden rounded-lg border border-border">
+          {["AM", "PM"].map((item, index) => {
+            const active = period === item;
+            return (
+              <button
+                key={item}
+                type="button"
+                onClick={() => commitParts(hour12, minute, item)}
+                className={cn(
+                  "flex flex-1 items-center justify-center text-sm font-medium transition-colors",
+                  active
+                    ? "bg-primary-600 text-white"
+                    : "bg-background text-foreground hover:bg-muted",
+                  index === 0 && "border-b border-border"
+                )}
+              >
+                {item}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TimePicker({
+  id,
+  value,
+  onChange,
+  onBlur,
+  placeholder = "Pick time",
+  className,
+  disabled = false,
+  align = "start",
+  "aria-invalid": ariaInvalid,
+}) {
+  const [open, setOpen] = useState(false);
+
+  function handleOpenChange(nextOpen) {
+    setOpen(nextOpen);
+    if (!nextOpen) onBlur?.();
+  }
+  const hasTime = Boolean(value);
+  const panelTime = value || "09:00";
+  const label = hasTime ? formatTimeLabel(value) : placeholder;
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
+        id={id}
+        disabled={disabled}
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            aria-invalid={ariaInvalid}
+            className={cn(
+              crmControl.pickerTrigger,
+              !hasTime && "text-muted-foreground",
+              ariaInvalid &&
+                "border-destructive ring-3 ring-destructive/20 dark:ring-destructive/40",
+              className
+            )}
+          />
+        }
+      >
+        <Clock className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate tabular-nums">{label}</span>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        {...POPOVER_CONTENT_PROPS}
+        className="w-(--anchor-width) min-w-[280px] max-w-[calc(100vw-24px)] rounded-xl p-3"
+      >
+        <TimePickerPanel
+          value={panelTime}
+          onChange={(next) => onChange?.(next)}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -149,7 +365,7 @@ export function DateTimePicker({
             variant="outline"
             size="lg"
             className={cn(
-              "h-9 w-full justify-start gap-2 rounded-lg border-input bg-transparent px-2.5 text-sm font-normal shadow-none dark:bg-input/30",
+              crmControl.pickerTrigger,
               !selected && "text-muted-foreground",
               className
             )}
@@ -161,15 +377,7 @@ export function DateTimePicker({
       </PopoverTrigger>
       <PopoverContent
         align={align}
-        side="bottom"
-        sideOffset={8}
-        positionMethod="fixed"
-        collisionPadding={16}
-        collisionAvoidance={{
-          side: "flip",
-          align: "shift",
-          fallbackAxisSide: "none",
-        }}
+        {...POPOVER_CONTENT_PROPS}
         className="w-(--anchor-width) min-w-(--anchor-width) max-w-[calc(100vw-24px)] overflow-x-hidden overflow-y-auto rounded-xl p-0"
       >
         {!timeOpen ? (
@@ -179,24 +387,12 @@ export function DateTimePicker({
             onSelect={handleSelect}
             defaultMonth={draftDate}
             showOutsideDays={false}
-            className="w-full p-3 [--cell-size:2rem] [&_button[data-day]]:size-8 [&_button[data-day]]:min-w-8 [&_button[data-day]]:w-8"
-            classNames={{
-              root: "w-full",
-              months: "w-full",
-              month: "w-full gap-3",
-              month_grid: "w-full",
-              weekdays: "grid w-full grid-cols-7",
-              weekday:
-                "flex size-8 w-full items-center justify-center text-center",
-              week: "mt-1 grid w-full grid-cols-7",
-              day: "relative flex h-8 w-full items-center justify-center p-0 aspect-auto bg-transparent data-[selected=true]:bg-transparent",
-              today: "bg-transparent data-[selected=true]:bg-transparent",
-              selected: "bg-transparent",
-            }}
+            className={CALENDAR_PICKER_CLASS}
+            classNames={CALENDAR_PICKER_CLASS_NAMES}
           />
         ) : null}
         <div className={cn("p-3", !timeOpen && "border-t border-border")}>
-          <label className="mb-1.5 block text-[12px] font-medium text-muted-foreground">
+          <label className={cn("mb-1.5 block", crmType.fieldLabelMuted)}>
             Time
           </label>
           <button
@@ -211,53 +407,15 @@ export function DateTimePicker({
             <Clock className="size-3.5 shrink-0 text-muted-foreground" />
           </button>
           {timeOpen ? (
-            <div className="mt-3 flex w-full min-w-0 items-end gap-2">
-              <TimeStepper
-                label="Hour"
-                value={hour12}
-                onIncrement={() =>
-                  commitParts(hour12 === 12 ? 1 : hour12 + 1, minute, period)
-                }
-                onDecrement={() =>
-                  commitParts(hour12 === 1 ? 12 : hour12 - 1, minute, period)
-                }
+            <div className="mt-3">
+              <TimePickerPanel
+                value={draftTime}
+                onChange={(next) => {
+                  setDraftTime(next);
+                  const base = draftDate || selected || new Date();
+                  onChange?.(combineDateAndTime(base, next));
+                }}
               />
-              <TimeStepper
-                label="Minute"
-                value={minute}
-                onIncrement={() =>
-                  commitParts(hour12, (minute + MINUTE_STEP) % 60, period)
-                }
-                onDecrement={() =>
-                  commitParts(hour12, (minute - MINUTE_STEP + 60) % 60, period)
-                }
-              />
-              <div className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">
-                  Period
-                </span>
-                <div className="flex h-[108px] w-full flex-col overflow-hidden rounded-lg border border-border">
-                  {["AM", "PM"].map((item, index) => {
-                    const active = period === item;
-                    return (
-                      <button
-                        key={item}
-                        type="button"
-                        onClick={() => commitParts(hour12, minute, item)}
-                        className={cn(
-                          "flex flex-1 items-center justify-center text-sm font-medium transition-colors",
-                          active
-                            ? "bg-primary-600 text-white"
-                            : "bg-background text-foreground hover:bg-muted",
-                          index === 0 && "border-b border-border"
-                        )}
-                      >
-                        {item}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           ) : null}
         </div>

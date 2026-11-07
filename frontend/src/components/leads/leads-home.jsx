@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "next/navigation";
-import { format, parseISO } from "date-fns";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowDownUp,
@@ -30,7 +29,6 @@ import {
   X,
 } from "lucide-react";
 
-import { LeadDetailSheet } from "@/components/leads/lead-detail-sheet";
 import { LeadFormDrawer } from "@/components/leads/lead-form-drawer";
 import {
   fromApiLead,
@@ -49,6 +47,7 @@ import {
   ownerById,
 } from "@/components/leads/leads-data";
 import { apiFetch } from "@/lib/api";
+import { formatLeadCalendarDate } from "@/lib/lead-dates";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -97,7 +96,11 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { LeadsSkeleton } from "@/components/leads/lead-skeletons";
+import { crmType } from "@/lib/crm-typography";
 import { cn } from "@/lib/utils";
+
+export { LeadsSkeleton } from "@/components/leads/lead-skeletons";
 
 const ALL_COLUMNS = [
   { id: "name", label: "Lead Name" },
@@ -240,12 +243,7 @@ function summaryIcon(name) {
 }
 
 function formatDate(value) {
-  if (!value) return "—";
-  try {
-    return format(parseISO(value), "MMM d, yyyy");
-  } catch {
-    return value;
-  }
+  return formatLeadCalendarDate(value);
 }
 
 function scoreRingColor(score) {
@@ -311,7 +309,7 @@ function ScoreRing({ score, size = 36, strokeWidth = 3 }) {
       </svg>
       <span
         className={cn(
-          "absolute text-[10px] font-semibold tabular-nums",
+          "absolute text-xs font-semibold tabular-nums",
           tone.text
         )}
       >
@@ -506,6 +504,7 @@ function KanbanLeadCard({
 }
 
 export function LeadsHome() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [loadStatus, setLoadStatus] = useState("loading");
   const [leads, setLeads] = useState([]);
@@ -527,7 +526,6 @@ export function LeadsHome() {
   const [visibleColumns, setVisibleColumns] = useState(DEFAULT_VISIBLE_COLUMNS);
   const [formOpen, setFormOpen] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
-  const [detailLeadId, setDetailLeadId] = useState(null);
   const [convertLead, setConvertLead] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -641,7 +639,6 @@ export function LeadsHome() {
 
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / pageSize));
   const pageRows = filteredLeads.slice((page - 1) * pageSize, page * pageSize);
-  const detailLead = leads.find((lead) => lead.id === detailLeadId) || null;
   const draftTargets = useMemo(() => followUpTargets(leads), [leads]);
   const nextActionLeads = useMemo(() => topOpenLeads(leads, 3), [leads]);
   const sourceStats = useMemo(() => sourcePerformance(leads), [leads]);
@@ -868,7 +865,7 @@ export function LeadsHome() {
   }
 
   function openLead(lead) {
-    setDetailLeadId(lead.id);
+    router.push(`/leads/${lead.id}`);
   }
 
   async function updateStatus(id, status) {
@@ -1017,7 +1014,7 @@ export function LeadsHome() {
     }
     setAiAction(null);
     setAiOpen(false);
-    setDetailLeadId(lead.id);
+    router.push(`/leads/${lead.id}`);
   }
 
   function handleDrop(status) {
@@ -1034,7 +1031,12 @@ export function LeadsHome() {
     <div className="mx-auto flex w-full min-w-0 max-w-[1440px] flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <nav className="mb-2 flex items-center gap-1.5 text-[12px] text-primary-500/80">
+          <nav
+            className={cn(
+              "mb-2 flex items-center gap-1.5",
+              crmType.breadcrumb
+            )}
+          >
             <span>Workspace</span>
             <span className="text-primary-300">/</span>
             <span className="font-medium text-primary-700 dark:text-primary-300">
@@ -1358,9 +1360,9 @@ export function LeadsHome() {
 
         {view === "table" ? (
           <>
-            <Table className="min-w-[1100px] table-fixed">
+            <Table className="min-w-[1100px] table-fixed text-xs">
               <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <TableRow className="bg-muted/50 text-xs hover:bg-muted/50">
                   <TableHead className="w-10 px-3">
                     <Checkbox
                       checked={
@@ -1414,7 +1416,7 @@ export function LeadsHome() {
                   <TableRow>
                     <TableCell
                       colSpan={visibleColumns.length + 2}
-                      className="px-3 py-10 text-center text-muted-foreground"
+                      className="px-3 py-10 text-center text-xs text-muted-foreground"
                     >
                       No leads match your filters.
                     </TableCell>
@@ -1443,17 +1445,17 @@ export function LeadsHome() {
                               onClick={() => openLead(lead)}
                               className="flex w-full min-w-0 items-center gap-2.5 text-left"
                             >
-                              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-[11px] font-semibold text-primary-700">
+                              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700">
                                 {initials(fullName(lead))}
                               </span>
                               <span className="min-w-0 flex-1 overflow-hidden">
                                 <TruncateText
                                   value={fullName(lead)}
-                                  className="font-semibold"
+                                  className="text-xs font-semibold"
                                 />
                                 <TruncateText
                                   value={lead.email}
-                                  className="text-[12px] text-muted-foreground"
+                                  className="text-xs text-muted-foreground"
                                 />
                               </span>
                             </button>
@@ -1463,7 +1465,7 @@ export function LeadsHome() {
                           <TableCell className="overflow-hidden px-3 py-2.5">
                             <TruncateText
                               value={lead.company}
-                              className="font-medium"
+                              className="text-xs font-medium"
                             />
                           </TableCell>
                         ) : null}
@@ -1471,7 +1473,7 @@ export function LeadsHome() {
                           <TableCell className="overflow-hidden px-3 py-2.5">
                             <TruncateText
                               value={lead.title}
-                              className="text-muted-foreground"
+                              className="text-xs text-muted-foreground"
                             />
                           </TableCell>
                         ) : null}
@@ -1482,7 +1484,7 @@ export function LeadsHome() {
                                 variant="outline"
                                 title={lead.source}
                                 className={cn(
-                                  "h-auto max-w-full overflow-hidden border-transparent",
+                                  "h-auto max-w-full overflow-hidden border-transparent text-xs",
                                   LEAD_SOURCE_STYLES[lead.source] ||
                                     LEAD_SOURCE_STYLES.Manual
                                 )}
@@ -1490,7 +1492,7 @@ export function LeadsHome() {
                                 <span className="truncate">{lead.source}</span>
                               </Badge>
                             ) : (
-                              <span className="text-muted-foreground">—</span>
+                              <span className="text-xs text-muted-foreground">—</span>
                             )}
                           </TableCell>
                         ) : null}
@@ -1505,7 +1507,7 @@ export function LeadsHome() {
                               variant="outline"
                               title={lead.status}
                               className={cn(
-                                "h-auto max-w-full overflow-hidden border-transparent",
+                                "h-auto max-w-full overflow-hidden border-transparent text-xs",
                                 LEAD_STATUS_STYLES[lead.status]
                               )}
                             >
@@ -1516,22 +1518,22 @@ export function LeadsHome() {
                         {visibleColumns.includes("owner") ? (
                           <TableCell className="overflow-hidden px-3 py-2.5">
                             <div className="flex min-w-0 items-center gap-2">
-                              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold">
+                              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
                                 {owner.initials}
                               </span>
                               <div className="min-w-0 flex-1 overflow-hidden">
-                                <TruncateText value={owner.name} />
+                                <TruncateText value={owner.name} className="text-xs" />
                               </div>
                             </div>
                           </TableCell>
                         ) : null}
                         {visibleColumns.includes("lastContacted") ? (
-                          <TableCell className="px-3 py-2.5 text-muted-foreground">
+                          <TableCell className="px-3 py-2.5 text-xs text-muted-foreground">
                             {formatDate(lead.lastContacted)}
                           </TableCell>
                         ) : null}
                         {visibleColumns.includes("createdAt") ? (
-                          <TableCell className="px-3 py-2.5 text-muted-foreground">
+                          <TableCell className="px-3 py-2.5 text-xs text-muted-foreground">
                             {formatDate(lead.createdAt)}
                           </TableCell>
                         ) : null}
@@ -1706,51 +1708,6 @@ export function LeadsHome() {
         defaultOwnerId={currentUserId}
       />
 
-      <LeadDetailSheet
-        open={Boolean(detailLead)}
-        onOpenChange={(open) => {
-          if (!open) setDetailLeadId(null);
-        }}
-        lead={detailLead}
-        leads={leads}
-        owners={owners}
-        currentUserId={currentUserId}
-        onSelectLead={setDetailLeadId}
-        onConvert={() => {
-          if (!detailLead) return;
-          setConvertLead(detailLead);
-        }}
-        onUpdateNotes={async (id, note) => {
-          const current = leads.find((row) => row.id === id);
-          if (!current) return;
-          const notes = current.notes ? `${current.notes}\n\n${note}` : note;
-          try {
-            const response = await apiFetch(`/api/leads/${id}`, {
-              method: "PATCH",
-              body: JSON.stringify({ notes }),
-            });
-            const saved = fromApiLead(response.data);
-            setLeads((prev) =>
-              prev.map((row) => (row.id === saved.id ? saved : row))
-            );
-          } catch (error) {
-            toast.error(error.message || "Could not save note");
-            throw error;
-          }
-        }}
-        onPatchLead={async (id, payload) => {
-          const response = await apiFetch(`/api/leads/${id}`, {
-            method: "PATCH",
-            body: JSON.stringify(payload),
-          });
-          const saved = fromApiLead(response.data);
-          setLeads((prev) =>
-            prev.map((row) => (row.id === saved.id ? saved : row))
-          );
-          return saved;
-        }}
-      />
-
       <Dialog
         open={Boolean(convertLead)}
         onOpenChange={(open) => {
@@ -1790,7 +1747,6 @@ export function LeadsHome() {
                 if (!convertLead) return;
                 updateStatus(convertLead.id, "Converted");
                 setConvertLead(null);
-                setDetailLeadId(null);
                 toast.success("Lead converted");
               }}
             >
@@ -2192,140 +2148,3 @@ export function LeadsHome() {
   );
 }
 
-function SkeletonBlock({ className }) {
-  return (
-    <div
-      className={cn(
-        "animate-pulse rounded-xl bg-neutral-200/70 dark:bg-neutral-800",
-        className
-      )}
-    />
-  );
-}
-
-function SummaryCardSkeleton() {
-  return (
-    <Card className="py-4">
-      <CardContent className="px-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1 space-y-3">
-            <SkeletonBlock className="h-3 w-24 rounded-md" />
-            <SkeletonBlock className="h-7 w-20 rounded-lg" />
-          </div>
-          <SkeletonBlock className="size-8 shrink-0 rounded-full" />
-        </div>
-        <SkeletonBlock className="mt-3 h-3 w-36 rounded-md" />
-      </CardContent>
-    </Card>
-  );
-}
-
-export function LeadsSkeleton() {
-  return (
-    <div
-      className="mx-auto flex w-full min-w-0 max-w-[1440px] flex-col gap-6"
-      aria-busy="true"
-      aria-label="Loading leads"
-    >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <SkeletonBlock className="h-3 w-28 rounded-md" />
-          <SkeletonBlock className="h-8 w-36 rounded-lg" />
-          <SkeletonBlock className="h-4 w-72 max-w-full rounded-md" />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SkeletonBlock className="h-9 w-[118px] rounded-lg" />
-          <SkeletonBlock className="h-9 w-9 rounded-lg" />
-          <SkeletonBlock className="h-9 w-9 rounded-lg" />
-          <SkeletonBlock className="h-9 w-[104px] rounded-lg" />
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <SummaryCardSkeleton key={index} />
-        ))}
-      </div>
-
-      <Card className="py-0">
-        <CardContent className="flex flex-wrap gap-1 p-1.5">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <div
-              key={index}
-              className="flex min-w-0 flex-1 flex-col gap-2 rounded-lg px-2.5 py-2"
-            >
-              <div className="flex items-center gap-1.5">
-                <SkeletonBlock className="size-1.5 rounded-full" />
-                <SkeletonBlock className="h-3 w-14 rounded-md" />
-              </div>
-              <SkeletonBlock className="h-5 w-8 rounded-md" />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card className="overflow-hidden py-0">
-        <div className="flex flex-col gap-3 border-b border-neutral-100 p-3 dark:border-neutral-800">
-          <div className="flex flex-wrap items-center gap-2">
-            <SkeletonBlock className="h-9 min-w-[200px] flex-1 rounded-lg" />
-            <SkeletonBlock className="h-9 w-[88px] rounded-lg" />
-            <SkeletonBlock className="h-9 w-[72px] rounded-lg" />
-            <SkeletonBlock className="h-9 w-[96px] rounded-lg" />
-            <SkeletonBlock className="ml-auto h-9 w-[160px] rounded-lg" />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <SkeletonBlock className="h-8 w-[72px] rounded-lg" />
-            <SkeletonBlock className="h-8 w-[72px] rounded-lg" />
-            <SkeletonBlock className="ml-auto h-8 w-28 rounded-lg" />
-          </div>
-        </div>
-
-        <div className="hidden border-b border-neutral-100 px-3 py-2.5 md:flex dark:border-neutral-800">
-          <div className="flex w-full items-center gap-4">
-            <SkeletonBlock className="size-4 rounded" />
-            <SkeletonBlock className="h-3 w-24 rounded-md" />
-            <SkeletonBlock className="h-3 w-20 rounded-md" />
-            <SkeletonBlock className="h-3 w-16 rounded-md" />
-            <SkeletonBlock className="h-3 w-16 rounded-md" />
-            <SkeletonBlock className="h-3 w-14 rounded-md" />
-            <SkeletonBlock className="h-3 w-16 rounded-md" />
-            <SkeletonBlock className="ml-auto h-3 w-8 rounded-md" />
-          </div>
-        </div>
-
-        <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <div
-              key={index}
-              className="flex items-center gap-3 px-3 py-3.5 md:gap-4"
-            >
-              <SkeletonBlock className="hidden size-4 rounded md:block" />
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <SkeletonBlock className="size-8 shrink-0 rounded-full" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <SkeletonBlock className="h-3.5 w-36 max-w-full rounded-md" />
-                  <SkeletonBlock className="h-3 w-44 max-w-full rounded-md md:hidden" />
-                </div>
-              </div>
-              <SkeletonBlock className="hidden h-3 w-24 rounded-md md:block" />
-              <SkeletonBlock className="hidden h-3 w-20 rounded-md lg:block" />
-              <SkeletonBlock className="hidden h-6 w-16 rounded-full sm:block" />
-              <SkeletonBlock className="hidden h-3 w-10 rounded-md xl:block" />
-              <SkeletonBlock className="hidden h-6 w-20 rounded-full md:block" />
-              <SkeletonBlock className="size-8 shrink-0 rounded-lg" />
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-neutral-100 px-3 py-3 dark:border-neutral-800">
-          <SkeletonBlock className="h-3 w-28 rounded-md" />
-          <div className="flex items-center gap-2">
-            <SkeletonBlock className="h-8 w-8 rounded-lg" />
-            <SkeletonBlock className="h-8 w-16 rounded-lg" />
-            <SkeletonBlock className="h-8 w-8 rounded-lg" />
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-}

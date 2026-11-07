@@ -1,3 +1,5 @@
+import { normalizeLeadTimelineDates } from "@/lib/lead-dates";
+
 export function mapMemberToOwner(member) {
   const name = member?.name || member?.email || "Unknown";
   const initials = name
@@ -26,10 +28,21 @@ export function parseLeadRelated(related) {
     companyIds: idList(raw.companyIds || raw.company_ids),
     contactIds: idList(raw.contactIds || raw.contact_ids),
     dealIds: idList(raw.dealIds || raw.deal_ids),
+    excludedCompanyIds: idList(
+      raw.excludedCompanyIds || raw.excluded_company_ids
+    ),
+    excludedContactIds: idList(
+      raw.excludedContactIds || raw.excluded_contact_ids
+    ),
   };
 }
 
 export function fromApiLead(row) {
+  const { createdAt, lastContacted } = normalizeLeadTimelineDates(
+    row.created_at,
+    row.last_contacted_at
+  );
+
   return {
     id: row.id,
     firstName: row.first_name || "",
@@ -45,10 +58,8 @@ export function fromApiLead(row) {
     ownerId: row.owner_id || "",
     score: Number(row.score ?? 50),
     notes: row.notes || "",
-    lastContacted: row.last_contacted_at
-      ? String(row.last_contacted_at).slice(0, 10)
-      : null,
-    createdAt: row.created_at ? String(row.created_at).slice(0, 10) : "",
+    lastContacted,
+    createdAt,
     convertedContactId: row.converted_contact_id || "",
     convertedDealId: row.converted_deal_id || "",
     related: parseLeadRelated(row.related),

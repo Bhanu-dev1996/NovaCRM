@@ -534,7 +534,7 @@ function formatLeadCode(id) {
   return compact ? `LD-${compact}` : "LD-000000";
 }
 
-function formatNoteDate(value) {
+export function formatNoteDate(value) {
   if (!value) return "";
   const iso = String(value).slice(0, 10);
   const [year, month, day] = iso.split("-").map(Number);
@@ -546,12 +546,12 @@ function formatNoteDate(value) {
   });
 }
 
-function serializeNote(author, body) {
+export function serializeNote(author, body) {
   const iso = new Date().toISOString().slice(0, 10);
   return `[${author} | ${iso}]\n${body}`;
 }
 
-function parseLeadNotes(notes, fallback = {}) {
+export function parseLeadNotes(notes, fallback = {}) {
   if (!notes?.trim()) return [];
   return notes
     .split(/\n\s*\n/)
@@ -614,7 +614,7 @@ const TOUCHPOINT_DOT = {
   created: "bg-neutral-400",
 };
 
-function buildTouchpointHistory(lead) {
+export function buildTouchpointHistory(lead) {
   const company = lead.company || "this account";
   const items = [];
 
@@ -677,6 +677,7 @@ function recommendedAction(lead) {
 }
 
 export function LeadDetailSheet({
+  variant = "sheet",
   open,
   onOpenChange,
   lead,
@@ -688,6 +689,7 @@ export function LeadDetailSheet({
   onPatchLead,
   onSelectLead,
 }) {
+  const isActive = variant === "page" || open;
   const [tab, setTab] = useState("overview");
   const [noteDraft, setNoteDraft] = useState("");
   const [postingNote, setPostingNote] = useState(false);
@@ -709,7 +711,7 @@ export function LeadDetailSheet({
   const [contactForm, setContactForm] = useState(EMPTY_CONTACT_FORM);
 
   useEffect(() => {
-    if (!open) return;
+    if (!isActive) return;
     setTab("overview");
     setNoteDraft("");
     setPostingNote(false);
@@ -720,10 +722,10 @@ export function LeadDetailSheet({
     setAddType(null);
     setAccountForm(EMPTY_ACCOUNT_FORM);
     setContactForm(EMPTY_CONTACT_FORM);
-  }, [open, lead?.id]);
+  }, [isActive, lead?.id]);
 
   useEffect(() => {
-    if (!open || !lead?.id) return;
+    if (!isActive || !lead?.id) return;
     let cancelled = false;
     async function loadRelated() {
       try {
@@ -759,7 +761,7 @@ export function LeadDetailSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, lead?.id]);
+  }, [isActive, lead?.id]);
 
   const owner = useMemo(
     () => (lead ? ownerById(lead.ownerId, owners) : null),
@@ -778,7 +780,12 @@ export function LeadDetailSheet({
     0
   );
 
+  if (variant === "sheet" && !open) return null;
   if (!lead) return null;
+
+  function dismiss() {
+    onOpenChange?.(false);
+  }
 
   const name = fullName(lead);
   const authorName =
@@ -843,7 +850,7 @@ export function LeadDetailSheet({
         setNoteDraft("");
       }
       toast.success("Changes saved");
-      onOpenChange?.(false);
+      if (variant === "sheet") dismiss();
     } catch {
       // Parent shows the error toast.
     } finally {
@@ -1022,15 +1029,7 @@ export function LeadDetailSheet({
     }
   }
 
-  return (
-    <>
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        title={name}
-        hideHeader
-        onClose={() => onOpenChange?.(false)}
-        className="max-w-[680px] overflow-hidden rounded-none"
-      >
+  const header = (
         <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-6 py-4 dark:border-neutral-800">
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary-100 text-[13px] font-bold text-primary-700 dark:bg-primary-950 dark:text-primary-300">
@@ -1061,20 +1060,23 @@ export function LeadDetailSheet({
             >
               Convert Lead
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              aria-label="Close"
-              onClick={() => onOpenChange?.(false)}
-            >
-              <X className="size-4" />
-            </Button>
+            {variant === "sheet" ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label="Close"
+                onClick={dismiss}
+              >
+                <X className="size-4" />
+              </Button>
+            ) : null}
           </div>
         </div>
+  );
 
-        <SheetBody className="px-6 py-4">
+  const tabsPanel = (
           <Tabs value={tab} onValueChange={setTab} className="gap-4">
             <TabsList
               variant="line"
@@ -1290,9 +1292,10 @@ export function LeadDetailSheet({
               ))}
             </TabsContent>
           </Tabs>
-        </SheetBody>
+  );
 
-        <SheetFooter className="justify-between px-6 [&>button]:flex-none">
+  const footer = (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 px-6 py-4 dark:border-neutral-800 [&>button]:flex-none">
           <p className="mr-auto text-[12px] text-neutral-400">
             Lead ID: {formatLeadCode(lead.id)}
           </p>
@@ -1300,9 +1303,9 @@ export function LeadDetailSheet({
             type="button"
             variant="outline"
             className="rounded-lg"
-            onClick={() => onOpenChange?.(false)}
+            onClick={dismiss}
           >
-            Close
+            {variant === "page" ? "Back to Leads" : "Close"}
           </Button>
           <Button
             type="button"
@@ -1312,10 +1315,11 @@ export function LeadDetailSheet({
           >
             Save Changes
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </div>
+  );
 
+  const dialogs = (
+    <>
     <Dialog open={logOpen} onOpenChange={setLogOpen}>
       <DialogContent
         title="Log Interaction"
@@ -1638,6 +1642,58 @@ export function LeadDetailSheet({
         </DialogContent>
       )}
     </Dialog>
+    </>
+  );
+
+  if (variant === "page") {
+    return (
+      <>
+        <div className="overflow-hidden rounded-none border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
+          {header}
+          <div className="px-6 py-4">{tabsPanel}</div>
+          {footer}
+        </div>
+        {dialogs}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          title={name}
+          hideHeader
+          maxWidth={840}
+          onClose={dismiss}
+          className="overflow-hidden rounded-none"
+        >
+          {header}
+          <SheetBody className="px-6 py-4">{tabsPanel}</SheetBody>
+          <SheetFooter className="justify-between px-6 [&>button]:flex-none">
+            <p className="mr-auto text-[12px] text-neutral-400">
+              Lead ID: {formatLeadCode(lead.id)}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-lg"
+              onClick={dismiss}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              className="rounded-lg bg-primary-600 text-white hover:bg-primary-700"
+              disabled={saving}
+              onClick={handleSaveChanges}
+            >
+              Save Changes
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+      {dialogs}
     </>
   );
 }

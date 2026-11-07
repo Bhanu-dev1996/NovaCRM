@@ -36,6 +36,7 @@ SEED_LEADS = [
         "score": 92,
         "status": "Qualified",
         "owner_key": "alex",
+        "created_at": "2026-09-08T10:00:00+00:00",
         "last_contacted_at": "2026-10-24T15:00:00+00:00",
         "notes": "Requested enterprise pricing and SSO options.",
     },
@@ -51,6 +52,7 @@ SEED_LEADS = [
         "score": 88,
         "status": "Contacted",
         "owner_key": "jordan",
+        "created_at": "2026-09-10T10:00:00+00:00",
         "last_contacted_at": "2026-10-22T16:00:00+00:00",
         "notes": "Introduced by Marcus Vance. Interested in pipeline analytics.",
     },
@@ -66,6 +68,7 @@ SEED_LEADS = [
         "score": 76,
         "status": "Nurturing",
         "owner_key": "sam",
+        "created_at": "2026-09-12T10:00:00+00:00",
         "last_contacted_at": "2026-10-18T14:00:00+00:00",
         "notes": "Evaluating Q1 budget approval.",
     },
@@ -81,6 +84,7 @@ SEED_LEADS = [
         "score": 64,
         "status": "New",
         "owner_key": "casey",
+        "created_at": "2026-10-26T10:00:00+00:00",
         "last_contacted_at": None,
         "notes": "",
     },
@@ -96,6 +100,7 @@ SEED_LEADS = [
         "score": 81,
         "status": "Qualified",
         "owner_key": "riley",
+        "created_at": "2026-09-14T10:00:00+00:00",
         "last_contacted_at": "2026-10-21T18:00:00+00:00",
         "notes": "Security review scheduled with architecture team.",
     },
@@ -111,6 +116,7 @@ SEED_LEADS = [
         "score": 58,
         "status": "Contacted",
         "owner_key": "alex",
+        "created_at": "2026-09-05T10:00:00+00:00",
         "last_contacted_at": "2026-10-15T17:00:00+00:00",
         "notes": "Asked for case studies in media vertical.",
     },
@@ -126,6 +132,7 @@ SEED_LEADS = [
         "score": 95,
         "status": "Converted",
         "owner_key": "jordan",
+        "created_at": "2026-09-01T10:00:00+00:00",
         "last_contacted_at": "2026-10-20T15:30:00+00:00",
         "notes": "Converted to opportunity — CloudScale Expansion.",
     },
@@ -141,6 +148,7 @@ SEED_LEADS = [
         "score": 49,
         "status": "Lost",
         "owner_key": "sam",
+        "created_at": "2026-08-15T10:00:00+00:00",
         "last_contacted_at": "2026-09-26T19:00:00+00:00",
         "notes": "Chose incumbent vendor for this cycle.",
     },
@@ -156,6 +164,7 @@ SEED_LEADS = [
         "score": 71,
         "status": "Nurturing",
         "owner_key": "casey",
+        "created_at": "2026-09-18T10:00:00+00:00",
         "last_contacted_at": "2026-10-19T16:20:00+00:00",
         "notes": "Waiting on holiday season bandwidth.",
     },
@@ -171,6 +180,7 @@ SEED_LEADS = [
         "score": 84,
         "status": "New",
         "owner_key": "riley",
+        "created_at": "2026-10-28T10:00:00+00:00",
         "last_contacted_at": None,
         "notes": "Downloaded ROI calculator from landing page.",
     },
@@ -225,6 +235,8 @@ def main() -> None:
         now = datetime.now(timezone.utc)
         inserted = 0
         for lead in SEED_LEADS:
+            created_at = lead.get("created_at") or now
+            updated_at = lead.get("last_contacted_at") or created_at
             conn.execute(
                 """
                 insert into leads (
@@ -263,8 +275,8 @@ def main() -> None:
                     lead["score"],
                     lead["notes"] or None,
                     lead["last_contacted_at"],
-                    now,
-                    now,
+                    created_at,
+                    updated_at,
                 ),
             )
             inserted += 1

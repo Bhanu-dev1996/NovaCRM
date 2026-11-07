@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { crmType } from "@/lib/crm-typography";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -78,12 +79,10 @@ export function DialogContent({
         <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <div className="min-w-0 flex-1">
             {title ? (
-              <h2 className="text-[16px] font-semibold text-neutral-900 dark:text-neutral-50">
-                {title}
-              </h2>
+              <h2 className={crmType.dialogTitle}>{title}</h2>
             ) : null}
             {description ? (
-              <p className="mt-0.5 text-[12px] text-neutral-500">
+              <p className={cn("mt-0.5", crmType.dialogDescription)}>
                 {description}
               </p>
             ) : null}

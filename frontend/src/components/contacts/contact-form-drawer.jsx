@@ -4,30 +4,22 @@ import { useMemo, useRef, useState } from "react";
 import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  CONTACT_TYPES,
-  CONTACT_TYPE_STYLES,
-  CONTACT_OWNERS,
-  LIFECYCLE_STATUSES,
-  LIFECYCLE_STYLES,
-  tagStyleAt,
-} from "@/components/contacts/contacts-data";
+import { CONTACT_TYPES, CONTACT_OWNERS } from "@/components/contacts/contacts-data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetBody,
@@ -45,7 +37,7 @@ const EMPTY_FORM = {
   phone: "",
   title: "",
   companyId: "",
-  contactType: "Prospect",
+  contactType: "",
   lifecycle: "Lead",
   ownerId: "",
   tags: [],
@@ -78,108 +70,112 @@ function FieldLabel({ htmlFor, required = false, children }) {
   );
 }
 
-function StatusChip({ label, className }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex h-5 items-center rounded-full px-2 text-[11px] font-medium",
-        className
-      )}
-    >
-      {label}
-    </span>
-  );
-}
-
-function SearchSelect({
+function FormFieldDropdown({
+  id,
   value,
   onChange,
+  onBlur,
   options,
   placeholder = "Select",
   searchPlaceholder = "Search…",
   emptyLabel = "No matches",
+  searchable = false,
+  listClassName,
+  invalid = false,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const closingFromSelectRef = useRef(false);
 
   function handleOpenChange(next) {
     setOpen(next);
-    if (!next) setQuery("");
+    if (!next) {
+      setQuery("");
+      if (closingFromSelectRef.current) {
+        closingFromSelectRef.current = false;
+        return;
+      }
+      onBlur?.();
+    }
   }
 
   const selected = options.find((item) => item.value === value);
   const filtered = useMemo(() => {
+    if (!searchable) return options;
     const q = query.trim().toLowerCase();
     if (!q) return options;
     return options.filter((item) =>
       (item.searchText || item.label).toLowerCase().includes(q)
     );
-  }, [options, query]);
+  }, [options, query, searchable]);
 
-  function selectItem(item) {
-    onChange(item.value);
-    setOpen(false);
+  function selectItem(nextValue) {
+    onChange(nextValue);
     setQuery("");
+    closingFromSelectRef.current = true;
+    setOpen(false);
   }
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger
+    <DropdownMenu open={open} onOpenChange={handleOpenChange}>
+      <DropdownMenuTrigger
         render={
           <Button
+            id={id}
             type="button"
             variant="outline"
+            aria-invalid={invalid}
             className="mt-1.5 h-10 w-full justify-between rounded-lg border-input bg-transparent px-2.5 text-sm font-normal shadow-none dark:bg-input/30"
           />
         }
       >
         <span
           className={cn(
-            "flex min-w-0 items-center gap-2",
+            "truncate text-left",
             !selected && "text-muted-foreground"
           )}
         >
-          {selected?.trigger || selected?.label || placeholder}
+          {selected?.label || placeholder}
         </span>
         <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-      </PopoverTrigger>
-      <PopoverContent
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
         align="start"
-        side="bottom"
         sideOffset={6}
-        positionMethod="fixed"
-        collisionAvoidance={{
-          side: "none",
-          align: "none",
-          fallbackAxisSide: "none",
-        }}
-        className="z-[120] w-(--anchor-width) min-w-(--anchor-width) gap-0 overflow-hidden rounded-xl p-0"
+        className="z-[120] w-(--anchor-width) min-w-(--anchor-width) gap-0 overflow-hidden p-0"
       >
-        <div className="border-b border-border p-2">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={searchPlaceholder}
-            className="h-9"
-            autoFocus
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                if (filtered[0]) selectItem(filtered[0]);
-              }
-            }}
-          />
-        </div>
-        <div className="max-h-48 overflow-y-auto p-1">
+        {searchable ? (
+          <div
+            className="border-b border-border p-2"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={searchPlaceholder}
+              className="h-9"
+              autoFocus
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (filtered[0]) selectItem(filtered[0].value);
+                }
+              }}
+            />
+          </div>
+        ) : null}
+        <div
+          className={cn(
+            "max-h-56 overflow-y-auto p-1",
+            listClassName ?? "min-h-32"
+          )}
+        >
           {filtered.map((item) => (
-            <button
+            <DropdownMenuItem
               key={item.value}
-              type="button"
-              onClick={() => selectItem(item)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted",
-                value === item.value && "bg-muted"
-              )}
+              className="gap-2 py-2"
+              onClick={() => selectItem(item.value)}
             >
               <Check
                 className={cn(
@@ -187,8 +183,8 @@ function SearchSelect({
                   value === item.value ? "opacity-100" : "opacity-0"
                 )}
               />
-              <span className="min-w-0 flex-1">{item.option || item.label}</span>
-            </button>
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            </DropdownMenuItem>
           ))}
           {filtered.length === 0 ? (
             <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">
@@ -196,19 +192,28 @@ function SearchSelect({
             </p>
           ) : null}
         </div>
-      </PopoverContent>
-    </Popover>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-function CompanyIdCombobox({ value, onChange, companies, onCreateCompany }) {
+function CompanyIdCombobox({
+  value,
+  onChange,
+  onBlur,
+  companies,
+  onCreateCompany,
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
 
   function handleOpenChange(next) {
     setOpen(next);
-    if (!next) setQuery("");
+    if (!next) {
+      setQuery("");
+      onBlur?.();
+    }
   }
 
   const selected = companies.find((c) => c.id === value);
@@ -335,67 +340,34 @@ function CompanyIdCombobox({ value, onChange, companies, onCreateCompany }) {
   );
 }
 
-function TagsInput({ tags, onChange }) {
-  const [draft, setDraft] = useState("");
-
-  function addTag(raw) {
-    const next = raw.trim();
-    if (!next) return;
-    if (tags.some((t) => t.toLowerCase() === next.toLowerCase())) return;
-    onChange([...tags, next]);
-    setDraft("");
-  }
-
-  return (
-    <div className="mt-1.5 space-y-2">
-      <div className="flex flex-wrap gap-1.5">
-        {tags.map((tag, index) => (
-          <span
-            key={tag}
-            className={cn(
-              "inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-medium",
-              tagStyleAt(index)
-            )}
-          >
-            {tag}
-            <button
-              type="button"
-              className="rounded-full p-0.5 hover:bg-black/5 dark:hover:bg-white/10"
-              aria-label={`Remove ${tag}`}
-              onClick={() => onChange(tags.filter((t) => t !== tag))}
-            >
-              <X className="size-3" />
-            </button>
-          </span>
-        ))}
-      </div>
-      <Input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        placeholder="Type a tag and press Enter"
-        className="h-9"
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            addTag(draft);
-          }
-        }}
-      />
-    </div>
-  );
-}
-
 function errorFor(field, values) {
   const value = String(values[field] ?? "");
   if (field === "firstName" && !value.trim()) return "First name is required";
   if (field === "lastName" && !value.trim()) return "Last name is required";
   if (field === "email" && value.trim() && !EMAIL_PATTERN.test(value.trim())) {
-    return "Enter a valid work email";
+    return "Enter a valid email address";
+  }
+  if (field === "contactType" && !value.trim()) {
+    return "Contact type is required";
   }
   return undefined;
 }
 
-function buildInitialForm(initialContact, fallbackOwnerId) {
+function normalizeEmail(email) {
+  return String(email ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function emailIsDuplicate(email, { existingEmails, initialContact, isEdit }) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  const own = normalizeEmail(initialContact?.email);
+  if (isEdit && own && own === normalized) return false;
+  return existingEmails.some((row) => normalizeEmail(row) === normalized);
+}
+
+function buildInitialForm(initialContact, defaultOwnerId) {
   if (initialContact) {
     return {
       firstName: initialContact.firstName || "",
@@ -406,14 +378,14 @@ function buildInitialForm(initialContact, fallbackOwnerId) {
       companyId: initialContact.companyId || "",
       contactType: initialContact.contactType || "Prospect",
       lifecycle: initialContact.lifecycle || "Lead",
-      ownerId: initialContact.ownerId || fallbackOwnerId,
+      ownerId: initialContact.ownerId || defaultOwnerId || "",
       tags: initialContact.tags || [],
       linkedIn: initialContact.linkedIn || "",
       notes: initialContact.notes || "",
       department: initialContact.department || "",
     };
   }
-  return { ...EMPTY_FORM, ownerId: fallbackOwnerId };
+  return { ...EMPTY_FORM };
 }
 
 function ContactFormDrawerBody({
@@ -428,78 +400,25 @@ function ContactFormDrawerBody({
 }) {
   const isEdit = Boolean(initialContact);
   const ownerOptions = owners?.length ? owners : CONTACT_OWNERS;
-  const fallbackOwnerId = defaultOwnerId || ownerOptions[0]?.id || "";
   const [form, setForm] = useState(() =>
-    buildInitialForm(initialContact, fallbackOwnerId)
+    buildInitialForm(initialContact, defaultOwnerId)
   );
   const [errors, setErrors] = useState({});
+  const [emailDuplicateWarning, setEmailDuplicateWarning] = useState("");
   const [saving, setSaving] = useState(false);
-  const duplicateWarned = useRef(false);
+  const duplicateToastShown = useRef(false);
 
   const typeOptions = useMemo(
-    () =>
-      CONTACT_TYPES.map((item) => ({
-        value: item,
-        label: item,
-        trigger: (
-          <StatusChip
-            label={item}
-            className={CONTACT_TYPE_STYLES[item] || CONTACT_TYPE_STYLES.Other}
-          />
-        ),
-        option: (
-          <StatusChip
-            label={item}
-            className={CONTACT_TYPE_STYLES[item] || CONTACT_TYPE_STYLES.Other}
-          />
-        ),
-      })),
+    () => CONTACT_TYPES.map((item) => ({ value: item, label: item })),
     []
   );
 
-  const lifecycleOptions = useMemo(
-    () =>
-      LIFECYCLE_STATUSES.map((item) => ({
-        value: item,
-        label: item,
-        trigger: (
-          <StatusChip
-            label={item}
-            className={LIFECYCLE_STYLES[item] || LIFECYCLE_STYLES.Inactive}
-          />
-        ),
-        option: (
-          <StatusChip
-            label={item}
-            className={LIFECYCLE_STYLES[item] || LIFECYCLE_STYLES.Inactive}
-          />
-        ),
-      })),
-    []
-  );
-
-  const ownerSelectOptions = useMemo(
+  const ownerDropdownOptions = useMemo(
     () =>
       ownerOptions.map((owner) => ({
         value: owner.id,
         label: owner.name,
-        searchText: `${owner.name} ${owner.email || ""}`,
-        trigger: (
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[9px] font-bold dark:bg-neutral-800">
-              {owner.initials}
-            </span>
-            <span className="truncate">{owner.name}</span>
-          </span>
-        ),
-        option: (
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[10px] font-bold dark:bg-neutral-800">
-              {owner.initials}
-            </span>
-            <span className="truncate">{owner.name}</span>
-          </span>
-        ),
+        searchText: `${owner.name} ${owner.email || ""} ${owner.initials || ""}`,
       })),
     [ownerOptions]
   );
@@ -507,29 +426,82 @@ function ContactFormDrawerBody({
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
+    if (key === "email") {
+      setEmailDuplicateWarning("");
+      duplicateToastShown.current = false;
+    }
+  }
+
+  function handleBlur(field, snapshot = form) {
+    const message = errorFor(field, snapshot);
+    setErrors((prev) => {
+      if (!message) {
+        if (prev[field] === undefined) return prev;
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      }
+      return { ...prev, [field]: message };
+    });
+    if (field === "email") {
+      syncDuplicateEmailWarning(snapshot.email);
+    }
+  }
+
+  function syncDuplicateEmailWarning(email) {
+    const duplicate = emailIsDuplicate(email, {
+      existingEmails,
+      initialContact,
+      isEdit,
+    });
+    const message = duplicate
+      ? "A contact with this email already exists."
+      : "";
+    setEmailDuplicateWarning(message);
+    if (duplicate && !duplicateToastShown.current) {
+      duplicateToastShown.current = true;
+      toast.warning("A contact with this email already exists");
+    }
   }
 
   function validateAll() {
     const next = {};
-    for (const field of ["firstName", "lastName", "email"]) {
+    for (const field of ["firstName", "lastName", "email", "contactType"]) {
       const err = errorFor(field, form);
       if (err) next[field] = err;
     }
     setErrors(next);
-    return Object.keys(next).length === 0;
-  }
 
-  function checkDuplicateEmail(email) {
-    const normalized = email.trim().toLowerCase();
-    if (!normalized || duplicateWarned.current) return;
-    const selfId = initialContact?.id;
-    const clash =
-      existingEmails.some((row) => row.toLowerCase() === normalized) &&
-      (!selfId || initialContact?.email?.toLowerCase() !== normalized);
-    if (clash) {
-      duplicateWarned.current = true;
-      toast.warning("A contact with this email already exists");
+    const duplicate = emailIsDuplicate(form.email, {
+      existingEmails,
+      initialContact,
+      isEdit,
+    });
+    if (duplicate) {
+      setEmailDuplicateWarning("A contact with this email already exists.");
     }
+
+    const valid = Object.keys(next).length === 0 && !duplicate;
+    if (!valid) {
+      const firstField =
+        next.firstName !== undefined
+          ? "firstName"
+          : next.lastName !== undefined
+            ? "lastName"
+            : next.email !== undefined
+              ? "email"
+              : next.contactType !== undefined
+                ? "contactType"
+                : duplicate
+                  ? "email"
+                  : null;
+      if (firstField) {
+        requestAnimationFrame(() => {
+          document.getElementById(`contact-${firstField}`)?.focus();
+        });
+      }
+    }
+    return valid;
   }
 
   async function createCompany(name) {
@@ -557,6 +529,7 @@ function ContactFormDrawerBody({
           firstName: form.firstName.trim(),
           lastName: form.lastName.trim(),
           email: form.email.trim(),
+          ownerId: form.ownerId || defaultOwnerId || "",
         },
         { isEdit }
       );
@@ -577,8 +550,8 @@ function ContactFormDrawerBody({
             </h2>
             <p className="mt-0.5 text-[13px] text-muted-foreground">
               {isEdit
-                ? "Update profile and relationship fields"
-                : "First and last name are required"}
+                ? "Update contact details"
+                : "Required fields are marked with *"}
             </p>
           </div>
           <Button
@@ -598,165 +571,145 @@ function ContactFormDrawerBody({
           onSubmit={submit}
           noValidate
         >
-          <SheetBody className="space-y-6 px-6 py-5">
-            <section className="space-y-3">
-              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 uppercase">
-                Personal
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel htmlFor="contact-first" required>
-                    First name
-                  </FieldLabel>
-                  <Input
-                    id="contact-first"
-                    value={form.firstName}
-                    onChange={(e) => update("firstName", e.target.value)}
-                    className="mt-1.5 h-10"
-                    aria-invalid={Boolean(errors.firstName)}
-                  />
-                  <FieldError message={errors.firstName} />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="contact-last" required>
-                    Last name
-                  </FieldLabel>
-                  <Input
-                    id="contact-last"
-                    value={form.lastName}
-                    onChange={(e) => update("lastName", e.target.value)}
-                    className="mt-1.5 h-10"
-                    aria-invalid={Boolean(errors.lastName)}
-                  />
-                  <FieldError message={errors.lastName} />
-                </div>
-              </div>
+          <SheetBody className="space-y-4 px-6 py-5">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <FieldLabel htmlFor="contact-email">Work email</FieldLabel>
+                <FieldLabel htmlFor="contact-firstName" required>
+                  First Name
+                </FieldLabel>
                 <Input
-                  id="contact-email"
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => update("email", e.target.value)}
-                  onBlur={(e) => checkDuplicateEmail(e.target.value)}
-                  placeholder="name@company.com"
+                  id="contact-firstName"
+                  value={form.firstName}
+                  onChange={(e) => update("firstName", e.target.value)}
+                  onBlur={() => handleBlur("firstName")}
+                  placeholder="Maya"
                   className="mt-1.5 h-10"
-                  aria-invalid={Boolean(errors.email)}
+                  aria-invalid={Boolean(errors.firstName)}
                 />
-                <FieldError message={errors.email} />
+                <FieldError message={errors.firstName} />
               </div>
               <div>
-                <Label htmlFor="contact-phone">Phone</Label>
-                <PhoneInput
-                  id="contact-phone"
-                  value={form.phone}
-                  onChange={(next) => update("phone", next)}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="contact-title">Job title</Label>
+                <FieldLabel htmlFor="contact-lastName" required>
+                  Last Name
+                </FieldLabel>
                 <Input
-                  id="contact-title"
-                  value={form.title}
-                  onChange={(e) => update("title", e.target.value)}
-                  placeholder="Director of Sales"
+                  id="contact-lastName"
+                  value={form.lastName}
+                  onChange={(e) => update("lastName", e.target.value)}
+                  onBlur={() => handleBlur("lastName")}
+                  placeholder="Chen"
                   className="mt-1.5 h-10"
+                  aria-invalid={Boolean(errors.lastName)}
                 />
+                <FieldError message={errors.lastName} />
               </div>
-            </section>
+            </div>
 
-            <section className="space-y-3">
-              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 uppercase">
-                Company
-              </h3>
-              <div>
-                <Label>Company</Label>
-                <CompanyIdCombobox
-                  value={form.companyId}
-                  onChange={(id) => update("companyId", id)}
-                  companies={companies}
-                  onCreateCompany={createCompany}
-                />
-              </div>
-              <div>
-                <Label htmlFor="contact-dept">Department</Label>
-                <Input
-                  id="contact-dept"
-                  value={form.department}
-                  onChange={(e) => update("department", e.target.value)}
-                  placeholder="Optional"
-                  className="mt-1.5 h-10"
-                />
-              </div>
-            </section>
+            <div>
+              <FieldLabel htmlFor="contact-email">Email</FieldLabel>
+              <Input
+                id="contact-email"
+                type="email"
+                value={form.email}
+                onChange={(e) => update("email", e.target.value)}
+                onBlur={() => handleBlur("email")}
+                placeholder="name@company.com"
+                className="mt-1.5 h-10"
+                aria-invalid={Boolean(errors.email || emailDuplicateWarning)}
+                aria-describedby={
+                  emailDuplicateWarning ? "contact-email-duplicate" : undefined
+                }
+              />
+              <FieldError message={errors.email} />
+              {emailDuplicateWarning && !errors.email ? (
+                <p
+                  id="contact-email-duplicate"
+                  role="alert"
+                  className="mt-1 text-[11px] text-amber-700 dark:text-amber-400"
+                >
+                  {emailDuplicateWarning}
+                </p>
+              ) : null}
+            </div>
 
-            <section className="space-y-3">
-              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 uppercase">
-                Contact details
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Type</Label>
-                  <SearchSelect
-                    value={form.contactType}
-                    onChange={(v) => update("contactType", v)}
-                    options={typeOptions}
-                    placeholder="Contact type"
-                    searchPlaceholder="Search types"
-                  />
-                </div>
-                <div>
-                  <Label>Lifecycle</Label>
-                  <SearchSelect
-                    value={form.lifecycle}
-                    onChange={(v) => update("lifecycle", v)}
-                    options={lifecycleOptions}
-                    placeholder="Lifecycle"
-                    searchPlaceholder="Search statuses"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label>Owner</Label>
-                <SearchSelect
-                  value={form.ownerId}
-                  onChange={(v) => update("ownerId", v)}
-                  options={ownerSelectOptions}
-                  placeholder="Select owner"
-                  searchPlaceholder="Search team"
-                />
-              </div>
-              <div>
-                <Label>Tags</Label>
-                <TagsInput
-                  tags={form.tags}
-                  onChange={(tags) => update("tags", tags)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="contact-linkedin">LinkedIn</Label>
-                <Input
-                  id="contact-linkedin"
-                  value={form.linkedIn}
-                  onChange={(e) => update("linkedIn", e.target.value)}
-                  placeholder="linkedin.com/in/username"
-                  className="mt-1.5 h-10"
-                />
-              </div>
-            </section>
+            <div>
+              <Label htmlFor="contact-phone">Phone Number</Label>
+              <PhoneInput
+                id="contact-phone"
+                value={form.phone}
+                onChange={(next) => update("phone", next)}
+                onBlur={() => handleBlur("phone")}
+                className="mt-1.5"
+              />
+            </div>
 
-            <section className="space-y-3">
-              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 uppercase">
-                Notes
-              </h3>
+            <div>
+              <Label htmlFor="contact-title">Job Title</Label>
+              <Input
+                id="contact-title"
+                value={form.title}
+                onChange={(e) => update("title", e.target.value)}
+                onBlur={() => handleBlur("title")}
+                placeholder="Director of Sales"
+                className="mt-1.5 h-10"
+              />
+            </div>
+
+            <div>
+              <Label>Company</Label>
+              <CompanyIdCombobox
+                value={form.companyId}
+                onChange={(id) => update("companyId", id)}
+                onBlur={() => handleBlur("companyId")}
+                companies={companies}
+                onCreateCompany={createCompany}
+              />
+            </div>
+
+            <div>
+              <FieldLabel htmlFor="contact-contactType" required>
+                Contact Type
+              </FieldLabel>
+              <FormFieldDropdown
+                id="contact-contactType"
+                value={form.contactType}
+                onChange={(value) => update("contactType", value)}
+                onBlur={() => handleBlur("contactType")}
+                options={typeOptions}
+                placeholder="Select contact type"
+                listClassName="min-h-40"
+                invalid={Boolean(errors.contactType)}
+              />
+              <FieldError message={errors.contactType} />
+            </div>
+
+            <div>
+              <FieldLabel htmlFor="contact-owner">Contact Owner</FieldLabel>
+              <FormFieldDropdown
+                id="contact-owner"
+                value={form.ownerId}
+                onChange={(value) => update("ownerId", value)}
+                onBlur={() => handleBlur("ownerId")}
+                options={ownerDropdownOptions}
+                placeholder="Select owner"
+                searchable
+                searchPlaceholder="Search team…"
+                listClassName="min-h-48"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="contact-notes">Notes</Label>
               <Textarea
+                id="contact-notes"
                 value={form.notes}
                 onChange={(e) => update("notes", e.target.value)}
+                onBlur={() => handleBlur("notes")}
                 placeholder="Relationship context, preferences, next steps…"
                 rows={3}
+                className="mt-1.5"
               />
-            </section>
+            </div>
           </SheetBody>
 
           <SheetFooter className="flex-wrap justify-end gap-2 px-6 [&>button]:flex-none">
@@ -773,7 +726,7 @@ function ContactFormDrawerBody({
               className="min-w-[118px] rounded-lg bg-primary-600 text-white hover:bg-primary-700"
               disabled={saving}
             >
-              {saving ? "Saving…" : isEdit ? "Save changes" : "Save Contact"}
+              {saving ? "Saving…" : "Save Contact"}
             </Button>
           </SheetFooter>
         </form>
