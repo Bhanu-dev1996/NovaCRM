@@ -5,11 +5,16 @@ from fastapi import HTTPException, status
 
 from app.db import execute, fetch_all, fetch_one
 
+DEFAULT_PROBABILITY_OPTIONS = list(range(0, 101, 5))
+
+
 DEFAULT_STAGES = [
-    {"name": "Qualify", "position": 1, "probability": 20, "is_won": False, "is_lost": False},
-    {"name": "Negotiate", "position": 2, "probability": 60, "is_won": False, "is_lost": False},
-    {"name": "Closed-Won", "position": 3, "probability": 100, "is_won": True, "is_lost": False},
-    {"name": "Closed-Lost", "position": 4, "probability": 0, "is_won": False, "is_lost": True},
+    {"name": "New", "position": 1, "probability": 10, "is_won": False, "is_lost": False},
+    {"name": "Qualified", "position": 2, "probability": 25, "is_won": False, "is_lost": False},
+    {"name": "Proposal", "position": 3, "probability": 50, "is_won": False, "is_lost": False},
+    {"name": "Negotiation", "position": 4, "probability": 75, "is_won": False, "is_lost": False},
+    {"name": "Closed Won", "position": 5, "probability": 100, "is_won": True, "is_lost": False},
+    {"name": "Closed Lost", "position": 6, "probability": 0, "is_won": False, "is_lost": True},
 ]
 
 
@@ -44,6 +49,51 @@ def _unique_slug(base: str, *, exclude_id: str | None = None) -> str:
     )
 
 
+def _seed_deal_probability_options(organization_id: str) -> None:
+    existing = fetch_one(
+        """
+        select id from deal_probability_options
+        where organization_id = %s
+        limit 1
+        """,
+        (organization_id,),
+    )
+    if existing:
+        return
+    for index, value in enumerate(DEFAULT_PROBABILITY_OPTIONS):
+        execute(
+            """
+            insert into deal_probability_options (
+              organization_id, value, position, updated_at
+            )
+            values (%s, %s, %s, now())
+            """,
+            (organization_id, value, index + 1),
+        )
+
+
+def _ensure_default_pipeline(organization_id: str) -> str:
+    row = fetch_one(
+        """
+        select id from pipelines
+        where organization_id = %s and is_default = true
+        limit 1
+        """,
+        (organization_id,),
+    )
+    if row:
+        return str(row["id"])
+    row = fetch_one(
+        """
+        insert into pipelines (organization_id, name, is_default, updated_at)
+        values (%s, %s, true, now())
+        returning id
+        """,
+        (organization_id, "Sales Pipeline"),
+    )
+    return str(row["id"])
+
+
 def _seed_pipeline_stages(organization_id: str) -> None:
     existing = fetch_one(
         """
@@ -54,18 +104,24 @@ def _seed_pipeline_stages(organization_id: str) -> None:
         (organization_id,),
     )
     if existing:
+        _seed_deal_probability_options(organization_id)
         return
+
+    pipeline_id = _ensure_default_pipeline(organization_id)
+    _seed_deal_probability_options(organization_id)
 
     for stage in DEFAULT_STAGES:
         execute(
             """
             insert into pipeline_stages (
-              organization_id, name, position, probability, is_won, is_lost, updated_at
+              organization_id, pipeline_id, name, position, probability,
+              is_won, is_lost, updated_at
             )
-            values (%s, %s, %s, %s, %s, %s, now())
+            values (%s, %s, %s, %s, %s, %s, %s, now())
             """,
             (
                 organization_id,
+                pipeline_id,
                 stage["name"],
                 stage["position"],
                 stage["probability"],

@@ -536,6 +536,8 @@ export function LeadsHome() {
   const [followUpDraft, setFollowUpDraft] = useState("");
   const [dragId, setDragId] = useState(null);
   const [dragOverStatus, setDragOverStatus] = useState(null);
+  const [deletePrompt, setDeletePrompt] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -828,6 +830,30 @@ export function LeadsHome() {
     setSelected((prev) => [
       ...new Set([...prev, ...pageRows.map((row) => row.id)]),
     ]);
+  }
+
+  function requestBulkDeleteLeads() {
+    if (!selected.length) return;
+    setDeletePrompt({ mode: "bulk" });
+  }
+
+  async function confirmDeleteLeads() {
+    if (!deletePrompt) return;
+    setDeleting(true);
+    try {
+      const ids = [...selected];
+      await Promise.all(
+        ids.map((id) => apiFetch(`/api/leads/${id}`, { method: "DELETE" }))
+      );
+      setLeads((prev) => prev.filter((lead) => !ids.includes(lead.id)));
+      setSelected([]);
+      toast.success(ids.length === 1 ? "Lead removed" : "Selected leads removed");
+      setDeletePrompt(null);
+    } catch (error) {
+      toast.error(error.message || "Could not delete leads");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleSaveLead(lead, { isEdit }) {
@@ -1292,23 +1318,7 @@ export function LeadsHome() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      const ids = [...selected];
-                      try {
-                        await Promise.all(
-                          ids.map((id) =>
-                            apiFetch(`/api/leads/${id}`, { method: "DELETE" })
-                          )
-                        );
-                        setLeads((prev) =>
-                          prev.filter((lead) => !ids.includes(lead.id))
-                        );
-                        setSelected([]);
-                        toast.success("Selected leads removed");
-                      } catch (error) {
-                        toast.error(error.message || "Could not delete leads");
-                      }
-                    }}
+                    onClick={requestBulkDeleteLeads}
                   >
                     <Trash2 className="size-3.5" />
                     Delete
@@ -2140,6 +2150,39 @@ export function LeadsHome() {
               onClick={scheduleRecommendedFollowUps}
             >
               {aiBusy ? "Scheduling…" : "Schedule follow-ups"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deletePrompt)}
+        onOpenChange={(open) => {
+          if (!open) setDeletePrompt(null);
+        }}
+      >
+        <DialogContent
+          title="Delete leads?"
+          description="Associated contacts and companies are not deleted."
+          onClose={() => setDeletePrompt(null)}
+        >
+          <DialogBody>
+            <p className="text-[13px] text-muted-foreground">
+              Remove <strong>{selected.length}</strong> selected lead
+              {selected.length === 1 ? "" : "s"} from your pipeline? This cannot be undone.
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeletePrompt(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={confirmDeleteLeads}
+            >
+              {deleting ? "Deleting…" : "Delete lead"}
             </Button>
           </DialogFooter>
         </DialogContent>

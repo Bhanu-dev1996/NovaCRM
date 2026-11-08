@@ -41,6 +41,7 @@ import {
   LEAD_STATUS_STYLES,
   fullName as leadFullName,
 } from "@/components/leads/leads-data";
+import { CompanyProfileCard } from "@/components/shared/crm-related-sidebar";
 import {
   LeadNoteComposer,
   NoteBodyWithMentions,
@@ -434,48 +435,6 @@ function LinkRecordDialog({
   );
 }
 
-function CompanySidebarCard({ company, onUnlink, unlinking }) {
-  const website = company.website?.trim();
-  const href = website
-    ? website.startsWith("http")
-      ? website
-      : `https://${website}`
-    : null;
-  const displayUrl = website
-    ? website.replace(/^https?:\/\//, "").replace(/\/$/, "")
-    : "";
-
-  return (
-    <div className="relative rounded-lg border border-neutral-200 bg-neutral-50/60 p-3 pr-10 dark:border-neutral-800 dark:bg-neutral-900/40">
-      {onUnlink ? (
-        <UnlinkRecordButton
-          label={`Unlink ${company.name || "company"}`}
-          unlinking={unlinking}
-          onClick={onUnlink}
-        />
-      ) : null}
-      <Link href={`/companies/${company.id}`} className={crmType.linkTitle}>
-        {company.name}
-      </Link>
-      {href ? (
-        <a
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-          className={cn(
-            "mt-1 inline-flex max-w-full items-center gap-0.5 truncate",
-            crmType.linkMeta
-          )}
-        >
-          <span className="truncate">{displayUrl}</span>
-          <ArrowUpRight className="size-3 shrink-0" />
-        </a>
-      ) : (
-        <p className={cn("mt-1", crmType.helper)}>No website</p>
-      )}
-    </div>
-  );
-}
 
 export function ContactDetailPage({
   contact,
@@ -1071,9 +1030,9 @@ export function ContactDetailPage({
           <SectionPanel padding="p-4">
             <SectionLabel>Company</SectionLabel>
             {company ? (
-              <CompanySidebarCard
-                company={company}
-                onUnlink={onUnlinkCompany ? handleUnlinkCompany : undefined}
+              <CompanyProfileCard
+                row={company}
+                onUnlink={onUnlinkCompany ? () => handleUnlinkCompany() : undefined}
                 unlinking={unlinkingCompany}
               />
             ) : (

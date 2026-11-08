@@ -76,9 +76,20 @@ create table if not exists public.contacts (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.pipelines (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations (id) on delete cascade,
+  name text not null,
+  is_default boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (organization_id, name)
+);
+
 create table if not exists public.pipeline_stages (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations (id) on delete cascade,
+  pipeline_id uuid references public.pipelines (id) on delete cascade,
   name text not null,
   position int not null default 0,
   probability numeric(5, 2) not null default 0,
@@ -89,18 +100,41 @@ create table if not exists public.pipeline_stages (
   unique (organization_id, name)
 );
 
+create table if not exists public.deal_probability_options (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations (id) on delete cascade,
+  value numeric(5, 2) not null
+    check (value >= 0 and value <= 100),
+  position int not null default 0,
+  label text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (organization_id, value)
+);
+
 create table if not exists public.deals (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations (id) on delete cascade,
   company_id uuid references public.companies (id) on delete set null,
   contact_id uuid references public.contacts (id) on delete set null,
+  pipeline_id uuid references public.pipelines (id) on delete set null,
   stage_id uuid references public.pipeline_stages (id) on delete set null,
   owner_id uuid references public.users (id) on delete set null,
   name text not null,
   amount numeric(14, 2) not null default 0,
   currency text not null default 'USD',
   ai_score numeric(5, 2),
+  probability numeric(5, 2)
+    check (probability is null or (probability >= 0 and probability <= 100)),
   expected_close_date date,
+  actual_close_date date,
+  lead_source text,
+  priority text,
+  description text,
+  notes text,
+  next_step text,
+  loss_reason text,
+  meta jsonb not null default '{}'::jsonb,
   status text not null default 'open' check (status in ('open', 'won', 'lost')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -170,7 +204,12 @@ create index if not exists users_email_idx on public.users (email);
 create index if not exists companies_org_idx on public.companies (organization_id);
 create index if not exists contacts_org_idx on public.contacts (organization_id);
 create index if not exists contacts_company_idx on public.contacts (company_id);
+create index if not exists deal_probability_options_org_idx
+  on public.deal_probability_options (organization_id, position);
+create index if not exists pipelines_org_idx on public.pipelines (organization_id);
 create index if not exists pipeline_stages_org_idx on public.pipeline_stages (organization_id, position);
+create index if not exists pipeline_stages_pipeline_idx
+  on public.pipeline_stages (pipeline_id, position);
 create index if not exists deals_org_idx on public.deals (organization_id);
 create index if not exists deals_stage_idx on public.deals (stage_id);
 create index if not exists leads_org_idx on public.leads (organization_id);
@@ -187,6 +226,8 @@ alter table public.organizations enable row level security;
 alter table public.organization_members enable row level security;
 alter table public.companies enable row level security;
 alter table public.contacts enable row level security;
+alter table public.deal_probability_options enable row level security;
+alter table public.pipelines enable row level security;
 alter table public.pipeline_stages enable row level security;
 alter table public.deals enable row level security;
 alter table public.leads enable row level security;

@@ -436,3 +436,60 @@ export function locationLabel(company) {
   if (city && country) return `${city}, ${country}`;
   return city || country || "—";
 }
+
+export function companiesWithoutContacts(companies, contactCountByCompany = {}) {
+  return (companies || []).filter(
+    (company) => !(contactCountByCompany[company.id] > 0)
+  );
+}
+
+export function industryCompanyStats(companies) {
+  const groups = new Map();
+  for (const company of companies || []) {
+    const industry = company.industry || "Unknown";
+    if (!groups.has(industry)) {
+      groups.set(industry, { industry, total: 0, active: 0 });
+    }
+    const row = groups.get(industry);
+    row.total += 1;
+    if (company.status === "Active") row.active += 1;
+  }
+  return [...groups.values()].sort((a, b) => b.total - a.total);
+}
+
+export function openPipelineValueByCompany(deals, companies) {
+  const companyById = Object.fromEntries(
+    (companies || []).map((company) => [company.id, company])
+  );
+  const values = new Map();
+  for (const deal of deals || []) {
+    if ((deal.status || "open") !== "open") continue;
+    const companyId = deal.company_id;
+    if (!companyId) continue;
+    values.set(
+      companyId,
+      (values.get(companyId) || 0) + Number(deal.amount || 0)
+    );
+  }
+  return [...values.entries()]
+    .map(([companyId, value]) => ({
+      companyId,
+      company: companyById[companyId],
+      value,
+      name: companyById[companyId]?.name || "Unknown",
+    }))
+    .filter((row) => row.company)
+    .sort((a, b) => b.value - a.value);
+}
+
+export function topCompaniesByOpenPipeline(deals, companies, limit = 3) {
+  return openPipelineValueByCompany(deals, companies).slice(0, limit);
+}
+
+export function buildCompanyFollowUpDraft(targets) {
+  if (targets.length === 1) {
+    const company = targets[0];
+    return `Hi,\n\nWe're mapping stakeholders at ${company.name} for upcoming account planning. Could you share the best contact for sales and success conversations?\n\nHappy to jump on a 15-minute call this week.\n\nBest,\nNovaCRM`;
+  }
+  return `Hi,\n\nWe're refreshing account coverage and noticed a few organizations without a primary contact on file. Could you help us identify the right champion at each account?\n\nThanks,\nNovaCRM`;
+}

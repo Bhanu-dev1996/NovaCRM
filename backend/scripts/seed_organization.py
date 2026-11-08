@@ -16,10 +16,12 @@ PRIMARY_ORG_ID = "a8414d8d-a9fd-4880-a557-01c9ef16046c"
 PRIMARY_OWNER_EMAIL = "bhanushankar474@gmail.com"
 
 DEFAULT_STAGES = [
-    ("Qualify", 1, 20, False, False),
-    ("Negotiate", 2, 60, False, False),
-    ("Closed-Won", 3, 100, True, False),
-    ("Closed-Lost", 4, 0, False, True),
+    ("New", 1, 10, False, False),
+    ("Qualified", 2, 25, False, False),
+    ("Proposal", 3, 50, False, False),
+    ("Negotiation", 4, 75, False, False),
+    ("Closed Won", 5, 100, True, False),
+    ("Closed Lost", 6, 0, False, True),
 ]
 
 # Keep in sync with scripts/seed_users.py emails
@@ -277,6 +279,28 @@ def _role_for(org: dict, email: str) -> str:
     return "member"
 
 
+def _ensure_pipeline(conn, organization_id: str) -> str:
+    row = conn.execute(
+        """
+        select id from public.pipelines
+        where organization_id = %s::uuid and is_default = true
+        limit 1
+        """,
+        (organization_id,),
+    ).fetchone()
+    if row:
+        return str(row[0])
+    row = conn.execute(
+        """
+        insert into public.pipelines (organization_id, name, is_default, updated_at)
+        values (%s::uuid, %s, true, now())
+        returning id
+        """,
+        (organization_id, "Sales Pipeline"),
+    ).fetchone()
+    return str(row[0])
+
+
 def _seed_stages(conn, organization_id: str) -> None:
     existing = conn.execute(
         """
@@ -288,15 +312,16 @@ def _seed_stages(conn, organization_id: str) -> None:
     ).fetchone()
     if existing:
         return
+    pipeline_id = _ensure_pipeline(conn, organization_id)
     for name, position, probability, is_won, is_lost in DEFAULT_STAGES:
         conn.execute(
             """
             insert into public.pipeline_stages (
-              organization_id, name, position, probability, is_won, is_lost, updated_at
+              organization_id, pipeline_id, name, position, probability, is_won, is_lost, updated_at
             )
-            values (%s::uuid, %s, %s, %s, %s, %s, now())
+            values (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, now())
             """,
-            (organization_id, name, position, probability, is_won, is_lost),
+            (organization_id, pipeline_id, name, position, probability, is_won, is_lost),
         )
 
 

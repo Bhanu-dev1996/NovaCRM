@@ -3,6 +3,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Lightbulb, Loader2, Plus, Sparkles, SquarePen, Unlink } from "lucide-react";
+import {
+  ContactProfileCard,
+  RelatedSidebarSection,
+} from "@/components/shared/crm-related-sidebar";
 import { toast } from "sonner";
 
 import {
@@ -130,30 +134,6 @@ function UnlinkRecordButton({ label, onClick, unlinking }) {
         <Unlink className="size-3.5" aria-hidden="true" />
       )}
     </Button>
-  );
-}
-
-function ContactSidebarCard({ contact, onUnlink, unlinking }) {
-  const name = fullName(contact);
-  return (
-    <div className="relative rounded-lg border border-neutral-200 bg-neutral-50/60 p-3 pr-10 dark:border-neutral-800 dark:bg-neutral-900/40">
-      {onUnlink ? (
-        <UnlinkRecordButton
-          label={`Unlink ${name}`}
-          unlinking={unlinking}
-          onClick={onUnlink}
-        />
-      ) : null}
-      <Link href={`/contacts/${contact.id}`} className={crmType.linkTitle}>
-        {name}
-      </Link>
-      {contact.title ? (
-        <p className={cn("mt-1 truncate", crmType.meta)}>{contact.title}</p>
-      ) : null}
-      {contact.email ? (
-        <p className={cn("mt-0.5 truncate", crmType.helper)}>{contact.email}</p>
-      ) : null}
-    </div>
   );
 }
 
@@ -1077,8 +1057,10 @@ export function CompanyDetailPage({
 
         <aside className="flex flex-col gap-4">
           <SectionPanel padding="p-4">
-            <SectionLabel
-              action={
+            <RelatedSidebarSection
+              title="Contacts"
+              count={linkedContacts.length}
+              addAction={
                 <Button
                   type="button"
                   variant="link"
@@ -1089,31 +1071,26 @@ export function CompanyDetailPage({
                   Add contact
                 </Button>
               }
+              emptyMessage="No contacts linked. Use Add contact to associate people with this company."
             >
-              Contacts
-            </SectionLabel>
-            {linkedContacts.length ? (
-              <ul className="max-h-[min(320px,50vh)] space-y-2 overflow-y-auto pr-0.5">
-                {linkedContacts.map((contact) => (
-                  <li key={contact.id}>
-                    <ContactSidebarCard
-                      contact={contact}
-                      unlinking={unlinkingContactId === contact.id}
-                      onUnlink={() => onUnlinkContact?.(contact.id)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p
-                className={cn(
-                  "rounded-lg border border-dashed border-neutral-200 px-3 py-6 text-center dark:border-neutral-800",
-                  crmType.dashedEmpty
-                )}
-              >
-                No contacts linked. Use Add contact to associate people with this company.
-              </p>
-            )}
+              {linkedContacts.length ? (
+                <ul className="max-h-[min(320px,50vh)] space-y-2 overflow-y-auto pr-0.5">
+                  {linkedContacts.map((contact) => (
+                    <li key={contact.id}>
+                      <ContactProfileCard
+                        row={contact}
+                        unlinking={unlinkingContactId === contact.id}
+                        onUnlink={
+                          onUnlinkContact
+                            ? (row) => onUnlinkContact(row.id)
+                            : undefined
+                        }
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </RelatedSidebarSection>
           </SectionPanel>
 
           <SectionPanel padding="p-4">

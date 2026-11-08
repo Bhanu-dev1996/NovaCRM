@@ -18,6 +18,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  Copy,
   SquarePen,
   Trash2,
   Upload,
@@ -27,6 +28,7 @@ import {
 import { toast } from "sonner";
 
 import { CompanyFormDrawer } from "@/components/companies/company-form-drawer";
+import { formatDealAmount } from "@/components/deals/deals-data";
 import {
   fromApiCompany,
   mapMemberToOwner,
@@ -36,8 +38,12 @@ import {
 import {
   COMPANY_INDUSTRIES,
   COMPANY_KPI_DEFINITIONS,
+  buildCompanyFollowUpDraft,
+  companiesWithoutContacts,
   formatCompanyRevenue,
+  industryCompanyStats,
   locationLabel,
+  topCompaniesByOpenPipeline,
 } from "@/components/companies/companies-data";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,11 +85,24 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { crmType } from "@/lib/crm-typography";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZES = [10, 20, 40, 50, 100];
+
+function serializeAiNote(body) {
+  const iso = new Date().toISOString().slice(0, 10);
+  return `[Nova AI | ${iso}]\n${body}`;
+}
+
+function tomorrowAt(hours, minutes) {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+}
 
 const ALL_COLUMNS = [
   { id: "company", label: "Company" },
@@ -447,9 +466,13 @@ export function CompaniesHome() {
   const [selected, setSelected] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePrompt, setDeletePrompt] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiAction, setAiAction] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [followUpDraft, setFollowUpDraft] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -557,6 +580,54 @@ export function CompaniesHome() {
     return rows;
   }, [companies, query, industryFilter, ownerFilter, sortKey, sortDir]);
 
+  const contactGapTargets = useMemo(
+    () => companiesWithoutContacts(companies, contactCountByCompany),
+    [companies, contactCountByCompany]
+  );
+  const industryStats = useMemo(
+    () => industryCompanyStats(companies),
+    [companies]
+  );
+  const nextActionCompanies = useMemo(
+    () => topCompaniesByOpenPipeline(deals, companies, 3),
+    [deals, companies]
+  );
+  const aiInsights = useMemo(() => {
+    const gapCount = contactGapTargets.length;
+    const topIndustry = industryStats[0];
+    const topAccount = nextActionCompanies[0];
+    return [
+      {
+        id: "draft",
+        title: "Contact coverage gap",
+        body: gapCount
+          ? `${gapCount} compan${gapCount === 1 ? "y has" : "ies have"} no linked contacts — harder to run deals and outreach.`
+          : "Every company has at least one contact. Draft a check-in for high-value accounts instead.",
+        action: "Draft Outreach",
+      },
+      {
+        id: "explain",
+        title: "Industry footprint",
+        body: topIndustry
+          ? `${topIndustry.industry} is your largest segment (${topIndustry.total} compan${topIndustry.total === 1 ? "y" : "ies"}, ${topIndustry.active} active).`
+          : "Add companies to compare industry mix.",
+        action: "Explain Insight",
+      },
+      {
+        id: "next",
+        title: "Next best action",
+        body: topAccount
+          ? `Recommended: Review open pipeline at ${topAccount.name} (${formatDealAmount(topAccount.value, "INR")} in open deals).`
+          : "No companies with open pipeline value right now.",
+        action: "Recommend Next Action",
+      },
+    ];
+  }, [
+    contactGapTargets.length,
+    industryStats,
+    nextActionCompanies,
+  ]);
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
@@ -599,6 +670,128 @@ export function CompaniesHome() {
 
   function openCompany(row) {
     router.push(`/companies/${row.id}`);
+  }
+
+  function draftTargetsForAi() {
+    if (contactGapTargets.length) {
+      return contactGapTargets.slice(0, 5);
+    }
+    return nextActionCompanies.map((row) => row.company).filter(Boolean);
+  }
+
+  function appendCompanyNote(id, note) {
+    const company = companies.find((row) => row.id === id);
+    if (!company) return;
+    const notes = company.notes ? `${company.notes}\n\n${note}` : note;
+    const merged = { ...company, notes };
+    persistCompanyMeta(merged);
+    setCompanies((prev) => prev.map((row) => (row.id === id ? merged : row)));
+  }
+
+  function openAiAction(id) {
+    if (id === "draft") {
+      setFollowUpDraft(buildCompanyFollowUpDraft(draftTargetsForAi()));
+    }
+    setAiAction(id);
+  }
+
+  function showCompanies(targets) {
+    setSelected(targets.map((company) => company.id));
+    setIndustryFilter("all");
+    setOwnerFilter("all");
+    setQuery("");
+    setView("table");
+    setAiAction(null);
+    setAiOpen(false);
+  }
+
+  async function saveFollowUpDrafts() {
+    const targets = draftTargetsForAi();
+    if (!targets.length) {
+      toast.error("No companies to follow up on");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const note = serializeAiNote(`Draft outreach\n${followUpDraft.trim()}`);
+      await Promise.all(targets.map((company) => appendCompanyNote(company.id, note)));
+      toast.success(
+        `Drafted outreach for ${targets.length} compan${targets.length === 1 ? "y" : "ies"}`
+      );
+      showCompanies(targets);
+    } catch (error) {
+      toast.error(error.message || "Could not save drafts");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function copyFollowUpDraft() {
+    try {
+      await navigator.clipboard.writeText(followUpDraft);
+      toast.success("Draft copied");
+    } catch {
+      toast.error("Could not copy draft");
+    }
+  }
+
+  function viewTopIndustry() {
+    const top = industryStats[0];
+    if (!top) {
+      toast.error("No industry data yet");
+      return;
+    }
+    setIndustryFilter(top.industry);
+    setOwnerFilter("all");
+    setQuery("");
+    setSelected([]);
+    setView("table");
+    setAiAction(null);
+    setAiOpen(false);
+    toast.success(`Showing ${top.industry} companies`);
+  }
+
+  function openTopRecommendedCompany() {
+    const row = nextActionCompanies[0];
+    if (!row?.company) return;
+    setAiAction(null);
+    setAiOpen(false);
+    openCompany(row.company);
+  }
+
+  async function scheduleRecommendedFollowUps() {
+    if (!nextActionCompanies.length) {
+      toast.error("No accounts to schedule");
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const due = tomorrowAt(10, 30);
+      await Promise.all(
+        nextActionCompanies.map((row) =>
+          apiFetch("/api/tasks", {
+            method: "POST",
+            body: JSON.stringify({
+              title: `Account review: ${row.name}`,
+              description: `Review open pipeline and stakeholders at ${row.name}.`,
+              status: "todo",
+              priority: "medium",
+              due_at: due.toISOString(),
+              assignee_id: currentUserId || null,
+            }),
+          })
+        )
+      );
+      toast.success(
+        `Scheduled ${nextActionCompanies.length} account review task${nextActionCompanies.length === 1 ? "" : "s"} for tomorrow, 10:30 AM`
+      );
+      setAiAction(null);
+      setAiOpen(false);
+    } catch (error) {
+      toast.error(error.message || "Could not schedule tasks");
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   function openEditCompany(row) {
@@ -680,14 +873,37 @@ export function CompaniesHome() {
     toast.success(isEdit ? "Company updated" : "Company created");
   }
 
-  async function confirmDelete() {
-    if (!deleteTarget) return;
+  function requestDeleteCompany(company) {
+    setDeletePrompt({ mode: "single", company });
+  }
+
+  function requestBulkDeleteCompanies() {
+    if (!selected.length) return;
+    setDeletePrompt({ mode: "bulk" });
+  }
+
+  async function confirmDeleteCompany() {
+    if (!deletePrompt) return;
     setDeleting(true);
     try {
-      await apiFetch(`/api/companies/${deleteTarget.id}`, { method: "DELETE" });
-      setCompanies((prev) => prev.filter((row) => row.id !== deleteTarget.id));
-      toast.success("Company deleted");
-      setDeleteTarget(null);
+      if (deletePrompt.mode === "bulk") {
+        const ids = [...selected];
+        await Promise.all(
+          ids.map((id) => apiFetch(`/api/companies/${id}`, { method: "DELETE" }))
+        );
+        setCompanies((prev) => prev.filter((row) => !ids.includes(row.id)));
+        setSelected([]);
+        toast.success(
+          ids.length === 1 ? "Company deleted" : "Selected companies removed"
+        );
+      } else {
+        const { company } = deletePrompt;
+        await apiFetch(`/api/companies/${company.id}`, { method: "DELETE" });
+        setCompanies((prev) => prev.filter((row) => row.id !== company.id));
+        setSelected((prev) => prev.filter((id) => id !== company.id));
+        toast.success("Company deleted");
+      }
+      setDeletePrompt(null);
     } catch (error) {
       toast.error(error.message || "Could not delete company");
     } finally {
@@ -744,6 +960,16 @@ export function CompaniesHome() {
             onClick={() => setExportOpen(true)}
           >
             <Download className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 rounded-lg border-primary-200 bg-gradient-to-br from-primary-50 via-secondary-50 to-primary-100 text-primary-700 hover:from-primary-100 hover:via-secondary-100 hover:to-primary-200 hover:text-primary-800 dark:border-primary-800 dark:from-primary-950 dark:via-secondary-900/50 dark:to-primary-900 dark:text-primary-300 dark:hover:from-primary-900 dark:hover:via-secondary-900/70 dark:hover:to-primary-800"
+            aria-label="AI Company Insights"
+            onClick={() => setAiOpen(true)}
+          >
+            <Sparkles className="size-4" />
           </Button>
           <Button
             type="button"
@@ -951,23 +1177,7 @@ export function CompaniesHome() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      const ids = [...selected];
-                      try {
-                        await Promise.all(
-                          ids.map((id) =>
-                            apiFetch(`/api/companies/${id}`, { method: "DELETE" })
-                          )
-                        );
-                        setCompanies((prev) =>
-                          prev.filter((row) => !ids.includes(row.id))
-                        );
-                        setSelected([]);
-                        toast.success("Selected companies removed");
-                      } catch (error) {
-                        toast.error(error.message || "Could not delete companies");
-                      }
-                    }}
+                    onClick={requestBulkDeleteCompanies}
                   >
                     <Trash2 className="size-3.5" />
                     Delete
@@ -1253,7 +1463,7 @@ export function CompaniesHome() {
                         setEditingCompany(row);
                         setFormOpen(true);
                       }}
-                      onDelete={() => setDeleteTarget(row)}
+                      onDelete={() => requestDeleteCompany(row)}
                     />
                   ))
                 )}
@@ -1376,6 +1586,209 @@ export function CompaniesHome() {
         </SheetContent>
       </Sheet>
 
+      <Sheet
+        open={aiOpen}
+        onOpenChange={(open) => {
+          setAiOpen(open);
+          if (!open) setAiAction(null);
+        }}
+      >
+        <SheetContent
+          title="AI Company Insights"
+          description="Recommendations you can act on from this account list."
+          onClose={() => {
+            setAiOpen(false);
+            setAiAction(null);
+          }}
+        >
+          <SheetBody className="space-y-3">
+            {aiInsights.map((insight) => (
+              <Card key={insight.id} size="sm" className="py-3">
+                <CardContent className="px-3">
+                  <p className="text-[13px] font-semibold">{insight.title}</p>
+                  <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                    {insight.body}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-2 h-9 w-full justify-start rounded-lg bg-muted px-2.5 text-[12px] font-medium text-muted-foreground hover:bg-neutral-200 hover:text-foreground"
+                    onClick={() => openAiAction(insight.id)}
+                  >
+                    {insight.action}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog
+        open={aiAction === "draft"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Draft Outreach"
+          description="Save this note on target companies, or copy it to send yourself."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {draftTargetsForAi().map((company) => (
+                <span
+                  key={company.id}
+                  className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-950 dark:text-primary-300"
+                >
+                  {company.name}
+                </span>
+              ))}
+            </div>
+            <Textarea
+              value={followUpDraft}
+              onChange={(event) => setFollowUpDraft(event.target.value)}
+              rows={8}
+            />
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={copyFollowUpDraft}>
+              <Copy className="size-3.5" />
+              Copy
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => showCompanies(draftTargetsForAi())}
+              disabled={!draftTargetsForAi().length}
+            >
+              View companies
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              disabled={
+                aiBusy || !followUpDraft.trim() || !draftTargetsForAi().length
+              }
+              onClick={saveFollowUpDrafts}
+            >
+              {aiBusy ? "Saving…" : "Save drafts"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={aiAction === "explain"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Industry footprint"
+          description="Company count by industry in this workspace."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            {industryStats.length ? (
+              <ul className="space-y-2">
+                {industryStats.map((row) => (
+                  <li
+                    key={row.industry}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
+                  >
+                    <div>
+                      <p className="text-[13px] font-semibold">{row.industry}</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        {row.active} active of {row.total}
+                      </p>
+                    </div>
+                    <p className="text-[16px] font-bold">{row.total}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-muted-foreground">No companies yet.</p>
+            )}
+            <p className="text-[12px] leading-5 text-muted-foreground">
+              Focus prospecting and campaigns on industries where you already have the
+              strongest footprint.
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAiAction(null)}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              onClick={viewTopIndustry}
+              disabled={!industryStats.length}
+            >
+              View top industry
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={aiAction === "next"}
+        onOpenChange={(open) => {
+          if (!open) setAiAction(null);
+        }}
+      >
+        <DialogContent
+          title="Recommend Next Action"
+          description="Schedule account reviews for companies with the most open pipeline."
+          onClose={() => setAiAction(null)}
+        >
+          <DialogBody className="space-y-3">
+            {nextActionCompanies.length ? (
+              <ul className="space-y-2">
+                {nextActionCompanies.map((row) => (
+                  <li
+                    key={row.companyId}
+                    className="rounded-xl border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
+                  >
+                    <p className="text-[13px] font-semibold">{row.name}</p>
+                    <p className="mt-0.5 text-[12px] text-muted-foreground">
+                      {formatDealAmount(row.value, "INR")} open pipeline
+                      {row.company?.industry ? ` · ${row.company.industry}` : ""}
+                    </p>
+                    <p className="mt-1 text-[12px] text-neutral-600 dark:text-neutral-300">
+                      Book a 20-min account review tomorrow at 10:30 AM.
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[13px] text-muted-foreground">
+                No companies with open deals to recommend.
+              </p>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={openTopRecommendedCompany}
+              disabled={!nextActionCompanies.length}
+            >
+              Open top company
+            </Button>
+            <Button
+              type="button"
+              className="bg-primary-600 text-white hover:bg-primary-700"
+              disabled={aiBusy || !nextActionCompanies.length}
+              onClick={scheduleRecommendedFollowUps}
+            >
+              {aiBusy ? "Scheduling…" : "Schedule reviews"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
         <DialogContent title="Export companies">
           <DialogBody>
@@ -1413,26 +1826,42 @@ export function CompaniesHome() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(deleteTarget)} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+      <Dialog
+        open={Boolean(deletePrompt)}
+        onOpenChange={(open) => {
+          if (!open) setDeletePrompt(null);
+        }}
+      >
         <DialogContent
-          title="Delete company?"
+          title={deletePrompt?.mode === "bulk" ? "Delete companies?" : "Delete company?"}
           description="Associated contacts, leads, deals, and activities are not deleted. Links may be cleared or require reassignment."
-          onClose={() => setDeleteTarget(null)}
+          onClose={() => setDeletePrompt(null)}
         >
           <DialogBody>
             <p className="text-[13px] text-muted-foreground">
-              Remove <strong>{deleteTarget?.name}</strong> from your workspace? This cannot be
-              undone.
+              {deletePrompt?.mode === "bulk" ? (
+                <>
+                  Remove <strong>{selected.length}</strong> selected compan
+                  {selected.length === 1 ? "y" : "ies"} from your workspace? This cannot be
+                  undone.
+                </>
+              ) : (
+                <>
+                  Remove <strong>{deletePrompt?.company?.name}</strong> from your workspace?
+                  This cannot be undone.
+                </>
+              )}
             </p>
           </DialogBody>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+            <Button type="button" variant="outline" onClick={() => setDeletePrompt(null)}>
               Cancel
             </Button>
             <Button
+              type="button"
               variant="destructive"
               disabled={deleting}
-              onClick={confirmDelete}
+              onClick={confirmDeleteCompany}
             >
               {deleting ? "Deleting…" : "Delete company"}
             </Button>

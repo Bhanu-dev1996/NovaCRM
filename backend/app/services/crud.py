@@ -11,7 +11,9 @@ from app.db import get_connection, serialize_row, serialize_rows
 ALLOWED_TABLES = {
     "companies",
     "contacts",
+    "pipelines",
     "pipeline_stages",
+    "deal_probability_options",
     "deals",
     "leads",
     "activities",

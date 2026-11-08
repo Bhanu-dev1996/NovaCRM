@@ -210,7 +210,7 @@ function CompanyCombobox({ value, onChange, options }) {
           <Button
             type="button"
             variant="outline"
-            className="mt-1.5 h-10 w-full justify-between rounded-lg border-input bg-transparent px-2.5 text-sm font-normal shadow-none dark:bg-input/30"
+            className="mt-1.5 h-10 w-full justify-between rounded-lg border-input bg-transparent px-2.5 text-[13px] font-normal shadow-none dark:bg-input/30"
           />
         }
       >
@@ -324,7 +324,7 @@ function SearchSelect({
           <Button
             type="button"
             variant="outline"
-            className="mt-1.5 h-10 w-full justify-between rounded-lg border-input bg-transparent px-2.5 text-sm font-normal shadow-none dark:bg-input/30"
+            className="mt-1.5 h-10 w-full justify-between rounded-lg border-input bg-transparent px-2.5 text-[13px] font-normal shadow-none dark:bg-input/30"
           />
         }
       >

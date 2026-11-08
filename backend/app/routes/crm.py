@@ -32,7 +32,9 @@ class WorkspaceSwitchBody(BaseModel):
 RESOURCE_MAP = {
     "companies": "companies",
     "contacts": "contacts",
+    "pipelines": "pipelines",
     "pipeline-stages": "pipeline_stages",
+    "deal-probability-options": "deal_probability_options",
     "deals": "deals",
     "leads": "leads",
     "activities": "activities",

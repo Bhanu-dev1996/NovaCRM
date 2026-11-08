@@ -35,6 +35,12 @@ import {
   fullName,
   ownerById,
 } from "@/components/leads/leads-data";
+import {
+  CompanyProfileCard,
+  ContactProfileCard,
+  RelatedSidebarSection,
+  SidebarAddLinkMenu,
+} from "@/components/shared/crm-related-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -179,10 +185,6 @@ function contactDisplayName(row) {
   return [row.first_name, row.last_name].filter(Boolean).join(" ") || row.email;
 }
 
-function isPersistedCompanyId(id) {
-  return id && !String(id).startsWith("lead-company-");
-}
-
 function isPersistedContactId(id) {
   return id && !String(id).startsWith("contact-");
 }
@@ -198,171 +200,12 @@ function canUnlinkContact(row, lead) {
   return true;
 }
 
-function UnlinkRecordButton({ label, onClick, unlinking }) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      className="absolute top-1.5 right-1 size-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-      disabled={unlinking}
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-    >
-      {unlinking ? (
-        <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-      ) : (
-        <Unlink className="size-3.5" aria-hidden="true" />
-      )}
-    </Button>
-  );
-}
-
-function CompanyProfileCard({ row, onUnlink, unlinking }) {
-  const website = row.website?.trim();
-  const href = website
-    ? website.startsWith("http")
-      ? website
-      : `https://${website}`
-    : null;
-  const displayUrl = website
-    ? website.replace(/^https?:\/\//, "").replace(/\/$/, "")
-    : "";
-  const companyHref = isPersistedCompanyId(row.id)
-    ? `/companies/${row.id}`
-    : null;
-
-  return (
-    <div className="relative rounded-lg border border-neutral-200 bg-neutral-50/60 p-3 pr-10 dark:border-neutral-800 dark:bg-neutral-900/40">
-      {onUnlink ? (
-        <UnlinkRecordButton
-          label={`Unlink ${row.name || "company"}`}
-          unlinking={unlinking}
-          onClick={() => onUnlink(row)}
-        />
-      ) : null}
-      {companyHref ? (
-        <Link
-          href={companyHref}
-          className={crmType.linkTitle}
-        >
-          {row.name}
-        </Link>
-      ) : (
-        <p className={crmType.bodySemibold}>
-          {row.name}
-        </p>
-      )}
-      {href ? (
-        <a
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-          className={cn(
-            "mt-1 inline-flex max-w-full items-center gap-0.5 truncate",
-            crmType.linkMeta
-          )}
-        >
-          <span className="truncate">{displayUrl}</span>
-          <ArrowUpRight className="size-3 shrink-0" />
-        </a>
-      ) : (
-        <p className={cn("mt-1", crmType.helper)}>No website</p>
-      )}
-    </div>
-  );
-}
-
-function ContactProfileCard({ row, onUnlink, unlinking }) {
-  const phone = row.phone?.trim();
-  const email = row.email?.trim();
-
-  return (
-    <div className="relative rounded-lg border border-neutral-200 bg-neutral-50/60 p-3 pr-10 dark:border-neutral-800 dark:bg-neutral-900/40">
-      {onUnlink ? (
-        <UnlinkRecordButton
-          label={`Unlink ${contactDisplayName(row)}`}
-          unlinking={unlinking}
-          onClick={() => onUnlink(row)}
-        />
-      ) : null}
-      {isPersistedContactId(row.id) ? (
-        <Link
-          href={`/contacts/${row.id}`}
-          className={crmType.linkTitle}
-        >
-          {contactDisplayName(row)}
-        </Link>
-      ) : (
-        <p className={crmType.bodySemibold}>
-          {contactDisplayName(row)}
-        </p>
-      )}
-      <div className={cn("mt-1.5 space-y-0.5", crmType.meta)}>
-        <p className="text-neutral-600 dark:text-neutral-400">
-          <span className="text-neutral-400">Mobile · </span>
-          {phone ? (
-            <a
-              href={`tel:${phone}`}
-              className="font-medium text-neutral-800 hover:text-primary-700 dark:text-neutral-200 dark:hover:text-primary-300"
-            >
-              {phone}
-            </a>
-          ) : (
-            <span className="text-neutral-400">—</span>
-          )}
-        </p>
-        <p className="truncate text-neutral-600 dark:text-neutral-400">
-          <span className="text-neutral-400">Email · </span>
-          {email ? (
-            <a
-              href={`mailto:${email}`}
-              className="font-medium text-neutral-800 hover:text-primary-700 dark:text-neutral-200 dark:hover:text-primary-300"
-            >
-              {email}
-            </a>
-          ) : (
-            <span className="text-neutral-400">—</span>
-          )}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function formatLeadCode(id) {
   const compact = String(id || "")
     .replace(/-/g, "")
     .slice(-6)
     .toUpperCase();
   return compact ? `LD-${compact}` : "LD-000000";
-}
-
-function SidebarAddLinkMenu({ label, onPick }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            type="button"
-            variant="link"
-            className={cn("h-auto gap-1 px-0", crmType.linkGhost)}
-          />
-        }
-      >
-        <Plus className="size-3.5" />
-        {label}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuItem onClick={() => onPick("create")}>
-          Add new
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onPick("existing")}>
-          Add existing
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }
 
 export function LeadDetailPage({
@@ -826,8 +669,10 @@ export function LeadDetailPage({
 
         <aside className="flex flex-col gap-4">
           <SectionPanel padding="p-4">
-            <SectionLabel
-              action={
+            <RelatedSidebarSection
+              title="Companies"
+              count={linkedCompanies.length}
+              addAction={
                 onPatchLead ? (
                   <SidebarAddLinkMenu
                     label="Add company"
@@ -835,39 +680,29 @@ export function LeadDetailPage({
                   />
                 ) : null
               }
+              emptyMessage="No companies linked. Use Add company to link or create one."
             >
-              Companies
-              {linkedCompanies.length > 1
-                ? ` (${linkedCompanies.length})`
-                : ""}
-            </SectionLabel>
-            {linkedCompanies.length ? (
-              <ul className="space-y-2">
-                {linkedCompanies.map((row) => (
-                  <li key={row.id}>
-                    <CompanyProfileCard
-                      row={row}
-                      onUnlink={onPatchLead ? handleUnlinkCompany : undefined}
-                      unlinking={unlinkingKey === `company:${row.id}`}
-                    />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p
-                className={cn(
-                  "rounded-lg border border-dashed border-neutral-200 px-3 py-6 text-center dark:border-neutral-800",
-                  crmType.dashedEmpty
-                )}
-              >
-                No companies linked. Use Add company to link or create one.
-              </p>
-            )}
+              {linkedCompanies.length ? (
+                <ul className="space-y-2">
+                  {linkedCompanies.map((row) => (
+                    <li key={row.id}>
+                      <CompanyProfileCard
+                        row={row}
+                        onUnlink={onPatchLead ? handleUnlinkCompany : undefined}
+                        unlinking={unlinkingKey === `company:${row.id}`}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </RelatedSidebarSection>
           </SectionPanel>
 
           <SectionPanel padding="p-4">
-            <SectionLabel
-              action={
+            <RelatedSidebarSection
+              title="Contacts"
+              count={relatedContacts.length}
+              addAction={
                 onPatchLead ? (
                   <SidebarAddLinkMenu
                     label="Add contact"
@@ -875,38 +710,26 @@ export function LeadDetailPage({
                   />
                 ) : null
               }
+              emptyMessage="No contacts linked. Use Add contact to link or create one."
             >
-              Contacts
-              {relatedContacts.length > 1
-                ? ` (${relatedContacts.length})`
-                : ""}
-            </SectionLabel>
-            {relatedContacts.length ? (
-              <ul className="space-y-2">
-                {relatedContacts.map((row) => (
-                  <li key={row.id}>
-                    <ContactProfileCard
-                      row={row}
-                      onUnlink={
-                        onPatchLead && canUnlinkContact(row, lead)
-                          ? handleUnlinkContact
-                          : undefined
-                      }
-                      unlinking={unlinkingKey === `contact:${row.id}`}
-                    />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p
-                className={cn(
-                  "rounded-lg border border-dashed border-neutral-200 px-3 py-6 text-center dark:border-neutral-800",
-                  crmType.dashedEmpty
-                )}
-              >
-                No contacts linked. Use Add contact to link or create one.
-              </p>
-            )}
+              {relatedContacts.length ? (
+                <ul className="space-y-2">
+                  {relatedContacts.map((row) => (
+                    <li key={row.id}>
+                      <ContactProfileCard
+                        row={row}
+                        onUnlink={
+                          onPatchLead && canUnlinkContact(row, lead)
+                            ? handleUnlinkContact
+                            : undefined
+                        }
+                        unlinking={unlinkingKey === `contact:${row.id}`}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </RelatedSidebarSection>
           </SectionPanel>
 
           <SectionPanel padding="p-4">

@@ -93,6 +93,36 @@ function currentYear() {
   return new Date().getFullYear();
 }
 
+function errorFor(field, values) {
+  if (field === "name" && !String(values.name || "").trim()) {
+    return "Company name is required";
+  }
+  if (field === "website" && !isValidUrl(values.website)) {
+    return "Enter a valid website URL";
+  }
+  if (field === "logoUrl" && String(values.logoUrl || "").trim() && !isValidUrl(values.logoUrl)) {
+    return "Enter a valid logo URL";
+  }
+  if (field === "annualRevenue") {
+    if (values.annualRevenue !== "" && Number.isNaN(Number(values.annualRevenue))) {
+      return "Revenue must be a number";
+    }
+    if (values.annualRevenue !== "" && Number(values.annualRevenue) < 0) {
+      return "Revenue cannot be negative";
+    }
+  }
+  if (field === "foundedYear" && values.foundedYear !== "") {
+    const year = Number(values.foundedYear);
+    if (!Number.isInteger(year) || year < 1800 || year > currentYear()) {
+      return `Enter a year between 1800 and ${currentYear()}`;
+    }
+  }
+  if (field === "ownerId" && !values.ownerId) {
+    return "Company owner is required";
+  }
+  return undefined;
+}
+
 export function CompanyFormDrawer({
   open,
   onOpenChange,
@@ -202,32 +232,54 @@ export function CompanyFormDrawer({
     }));
   }
 
-  function validate() {
-    const next = {};
-    if (!form.name.trim()) next.name = "Company name is required";
-    if (!isValidUrl(form.website)) next.website = "Enter a valid website URL";
-    if (form.annualRevenue !== "" && Number.isNaN(Number(form.annualRevenue))) {
-      next.annualRevenue = "Revenue must be a number";
-    } else if (
-      form.annualRevenue !== "" &&
-      Number(form.annualRevenue) < 0
-    ) {
-      next.annualRevenue = "Revenue cannot be negative";
-    }
-    if (form.foundedYear !== "") {
-      const year = Number(form.foundedYear);
-      if (!Number.isInteger(year) || year < 1800 || year > currentYear()) {
-        next.foundedYear = `Enter a year between 1800 and ${currentYear()}`;
+  function handleBlur(field, snapshot = form) {
+    const message = errorFor(field, snapshot);
+    setErrors((prev) => {
+      if (!message) {
+        if (prev[field] === undefined) return prev;
+        const next = { ...prev };
+        delete next[field];
+        return next;
       }
+      return { ...prev, [field]: message };
+    });
+  }
+
+  function validateAll() {
+    const fields = [
+      "name",
+      "website",
+      "logoUrl",
+      "annualRevenue",
+      "foundedYear",
+      "ownerId",
+    ];
+    const next = {};
+    for (const field of fields) {
+      const message = errorFor(field, form);
+      if (message) next[field] = message;
     }
-    if (!form.ownerId) next.ownerId = "Company owner is required";
     setErrors(next);
-    return !Object.keys(next).length;
+    if (Object.keys(next).length) {
+      const first = Object.keys(next)[0];
+      const idByField = {
+        name: "co-name",
+        website: "co-website",
+        logoUrl: "co-logo",
+        annualRevenue: "co-revenue",
+        foundedYear: "co-founded",
+        ownerId: "co-owner",
+      };
+      requestAnimationFrame(() => {
+        document.getElementById(idByField[first])?.focus();
+      });
+    }
+    return Object.keys(next).length === 0;
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!validate()) return;
+    if (!validateAll()) return;
     setSaving(true);
     try {
       await onSave?.(
@@ -302,7 +354,9 @@ export function CompanyFormDrawer({
                   className="mt-1.5 h-10"
                   value={form.name}
                   onChange={(e) => update("name", e.target.value)}
+                  onBlur={() => handleBlur("name")}
                   placeholder="Acme Corporation"
+                  aria-invalid={Boolean(errors.name)}
                 />
                 <FieldError message={errors.name} />
               </div>
@@ -314,7 +368,9 @@ export function CompanyFormDrawer({
                     className="mt-1.5 h-10"
                     value={form.website}
                     onChange={(e) => update("website", e.target.value)}
+                    onBlur={() => handleBlur("website")}
                     placeholder="https://example.com"
+                    aria-invalid={Boolean(errors.website)}
                   />
                   <FieldError message={errors.website} />
                 </div>
@@ -336,8 +392,11 @@ export function CompanyFormDrawer({
                   className="mt-1.5 h-10"
                   value={form.logoUrl}
                   onChange={(e) => update("logoUrl", e.target.value)}
+                  onBlur={() => handleBlur("logoUrl")}
                   placeholder="https://cdn.example.com/logo.png"
+                  aria-invalid={Boolean(errors.logoUrl)}
                 />
+                <FieldError message={errors.logoUrl} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -392,7 +451,9 @@ export function CompanyFormDrawer({
                     className="mt-1.5 h-10"
                     value={form.annualRevenue}
                     onChange={(e) => update("annualRevenue", e.target.value)}
+                    onBlur={() => handleBlur("annualRevenue")}
                     placeholder="e.g. 2500000"
+                    aria-invalid={Boolean(errors.annualRevenue)}
                   />
                   <FieldError message={errors.annualRevenue} />
                 </div>
@@ -415,7 +476,9 @@ export function CompanyFormDrawer({
                     className="mt-1.5 h-10"
                     value={form.foundedYear}
                     onChange={(e) => update("foundedYear", e.target.value)}
+                    onBlur={() => handleBlur("foundedYear")}
                     placeholder="2018"
+                    aria-invalid={Boolean(errors.foundedYear)}
                   />
                   <FieldError message={errors.foundedYear} />
                 </div>
@@ -454,6 +517,7 @@ export function CompanyFormDrawer({
                   id="co-owner"
                   value={form.ownerId || ""}
                   onChange={(value) => update("ownerId", value ?? "")}
+                  onBlur={() => handleBlur("ownerId")}
                   options={ownerOptions}
                   placeholder="Select company owner"
                   searchable

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { CONTACT_TYPES, CONTACT_OWNERS } from "@/components/contacts/contacts-data";
@@ -15,11 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { SearchEntityCombobox } from "@/components/shared/search-entity-combobox";
 import {
   Sheet,
   SheetBody,
@@ -194,149 +190,6 @@ function FormFieldDropdown({
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function CompanyIdCombobox({
-  value,
-  onChange,
-  onBlur,
-  companies,
-  onCreateCompany,
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [creating, setCreating] = useState(false);
-
-  function handleOpenChange(next) {
-    setOpen(next);
-    if (!next) {
-      setQuery("");
-      onBlur?.();
-    }
-  }
-
-  const selected = companies.find((c) => c.id === value);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return companies;
-    return companies.filter((c) => c.name.toLowerCase().includes(q));
-  }, [companies, query]);
-
-  const exactMatch = companies.some(
-    (c) => c.name.toLowerCase() === query.trim().toLowerCase()
-  );
-  const canCreate = query.trim().length > 0 && !exactMatch;
-
-  async function selectCompany(id) {
-    onChange(id);
-    setOpen(false);
-    setQuery("");
-  }
-
-  async function handleCreate() {
-    const name = query.trim();
-    if (!name || creating) return;
-    setCreating(true);
-    try {
-      const created = await onCreateCompany(name);
-      if (created?.id) {
-        onChange(created.id);
-        setOpen(false);
-        setQuery("");
-        toast.success(`Added ${name}`);
-      }
-    } catch (error) {
-      toast.error(error.message || "Could not create company");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-1.5 h-10 w-full justify-between rounded-lg border-input bg-transparent px-2.5 text-[13px] font-normal shadow-none dark:bg-input/30"
-          />
-        }
-      >
-        <span className={cn("truncate", !selected && "text-muted-foreground")}>
-          {selected?.name || "Search or create a company"}
-        </span>
-        <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        side="bottom"
-        sideOffset={6}
-        positionMethod="fixed"
-        collisionAvoidance={{
-          side: "none",
-          align: "none",
-          fallbackAxisSide: "none",
-        }}
-        className="z-[120] w-(--anchor-width) min-w-(--anchor-width) gap-0 overflow-hidden rounded-xl p-0"
-      >
-        <div className="border-b border-border p-2">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type a company name"
-            className="h-9"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                if (canCreate) handleCreate();
-                else if (filtered[0]) selectCompany(filtered[0].id);
-              }
-            }}
-          />
-        </div>
-        <div className="max-h-48 overflow-y-auto p-1">
-          {filtered.map((company) => (
-            <button
-              key={company.id}
-              type="button"
-              onClick={() => selectCompany(company.id)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted",
-                value === company.id && "bg-muted"
-              )}
-            >
-              <Check
-                className={cn(
-                  "size-3.5",
-                  value === company.id ? "opacity-100" : "opacity-0"
-                )}
-              />
-              <span className="truncate">{company.name}</span>
-            </button>
-          ))}
-          {canCreate ? (
-            <button
-              type="button"
-              disabled={creating}
-              onClick={handleCreate}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-primary-700 hover:bg-muted dark:text-primary-300"
-            >
-              <Plus className="size-3.5 shrink-0" />
-              <span className="truncate">Create “{query.trim()}”</span>
-            </button>
-          ) : null}
-          {!filtered.length && !canCreate ? (
-            <p className="px-2 py-3 text-center text-[12px] text-muted-foreground">
-              No companies found
-            </p>
-          ) : null}
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -571,7 +424,11 @@ function ContactFormDrawerBody({
           onSubmit={submit}
           noValidate
         >
-          <SheetBody className="space-y-4 px-6 py-5">
+          <SheetBody className="space-y-6 px-6 py-5">
+            <section className="space-y-3">
+              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 uppercase">
+                Person
+              </h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <FieldLabel htmlFor="contact-firstName" required>
@@ -613,7 +470,7 @@ function ContactFormDrawerBody({
                 value={form.email}
                 onChange={(e) => update("email", e.target.value)}
                 onBlur={() => handleBlur("email")}
-                placeholder="name@company.com"
+                placeholder="maya.chen@company.com"
                 className="mt-1.5 h-10"
                 aria-invalid={Boolean(errors.email || emailDuplicateWarning)}
                 aria-describedby={
@@ -643,29 +500,55 @@ function ContactFormDrawerBody({
               />
             </div>
 
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 uppercase">
+                Company
+              </h3>
             <div>
-              <Label htmlFor="contact-title">Job Title</Label>
+              <Label className="text-[13px]">Company</Label>
+              <SearchEntityCombobox
+                value={form.companyId}
+                onChange={(id) => update("companyId", id)}
+                onBlur={() => handleBlur("companyId")}
+                items={companies.map((company) => ({
+                  id: company.id,
+                  label: company.name,
+                  searchText: company.domain || company.website || "",
+                }))}
+                onCreate={async (name) => {
+                  try {
+                    const created = await createCompany(name);
+                    if (created?.id) {
+                      toast.success(`Added ${name}`);
+                      return { id: created.id, label: created.name || name };
+                    }
+                    return null;
+                  } catch (error) {
+                    toast.error(error.message || "Could not create company");
+                    return null;
+                  }
+                }}
+              />
+            </div>
+            <div>
+              <Label htmlFor="contact-title">Job title</Label>
               <Input
                 id="contact-title"
                 value={form.title}
                 onChange={(e) => update("title", e.target.value)}
                 onBlur={() => handleBlur("title")}
-                placeholder="Director of Sales"
+                placeholder="VP of Growth"
                 className="mt-1.5 h-10"
               />
             </div>
+            </section>
 
-            <div>
-              <Label>Company</Label>
-              <CompanyIdCombobox
-                value={form.companyId}
-                onChange={(id) => update("companyId", id)}
-                onBlur={() => handleBlur("companyId")}
-                companies={companies}
-                onCreateCompany={createCompany}
-              />
-            </div>
-
+            <section className="space-y-3">
+              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 uppercase">
+                Assignment
+              </h3>
             <div>
               <FieldLabel htmlFor="contact-contactType" required>
                 Contact Type
@@ -710,6 +593,7 @@ function ContactFormDrawerBody({
                 className="mt-1.5"
               />
             </div>
+            </section>
           </SheetBody>
 
           <SheetFooter className="flex-wrap justify-end gap-2 px-6 [&>button]:flex-none">

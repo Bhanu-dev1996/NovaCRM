@@ -554,6 +554,8 @@ export function ContactsHome() {
   const [aiAction, setAiAction] = useState(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [outreachDraft, setOutreachDraft] = useState("");
+  const [deletePrompt, setDeletePrompt] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const companyMap = useMemo(
     () => Object.fromEntries(companies.map((c) => [c.id, c.name])),
     [companies]
@@ -706,14 +708,41 @@ export function ContactsHome() {
     setFormOpen(true);
   }
 
-  async function deleteContact(contact) {
+  function requestDeleteContact(contact) {
+    setDeletePrompt({ mode: "single", contact });
+  }
+
+  function requestBulkDeleteContacts() {
+    if (!selected.length) return;
+    setDeletePrompt({ mode: "bulk" });
+  }
+
+  async function confirmDeleteContacts() {
+    if (!deletePrompt) return;
+    setDeleting(true);
     try {
-      await apiFetch(`/api/contacts/${contact.id}`, { method: "DELETE" });
-      setContacts((prev) => prev.filter((row) => row.id !== contact.id));
-      setSelected((prev) => prev.filter((id) => id !== contact.id));
-      toast.success("Contact removed");
+      if (deletePrompt.mode === "bulk") {
+        const ids = [...selected];
+        await Promise.all(
+          ids.map((id) => apiFetch(`/api/contacts/${id}`, { method: "DELETE" }))
+        );
+        setContacts((prev) => prev.filter((contact) => !ids.includes(contact.id)));
+        setSelected([]);
+        toast.success(
+          ids.length === 1 ? "Contact removed" : "Selected contacts removed"
+        );
+      } else {
+        const { contact } = deletePrompt;
+        await apiFetch(`/api/contacts/${contact.id}`, { method: "DELETE" });
+        setContacts((prev) => prev.filter((row) => row.id !== contact.id));
+        setSelected((prev) => prev.filter((id) => id !== contact.id));
+        toast.success("Contact removed");
+      }
+      setDeletePrompt(null);
     } catch (error) {
       toast.error(error.message || "Could not delete contact");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -1229,23 +1258,7 @@ export function ContactsHome() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={async () => {
-                      const ids = [...selected];
-                      try {
-                        await Promise.all(
-                          ids.map((id) =>
-                            apiFetch(`/api/contacts/${id}`, { method: "DELETE" })
-                          )
-                        );
-                        setContacts((prev) =>
-                          prev.filter((contact) => !ids.includes(contact.id))
-                        );
-                        setSelected([]);
-                        toast.success("Selected contacts removed");
-                      } catch (error) {
-                        toast.error(error.message || "Could not delete contacts");
-                      }
-                    }}
+                    onClick={requestBulkDeleteContacts}
                   >
                     <Trash2 className="size-3.5" />
                     Delete
@@ -1507,7 +1520,7 @@ export function ContactsHome() {
                         companyName={companyMap[contact.companyId]}
                         onOpen={() => openContact(contact)}
                         onEdit={() => openEdit(contact)}
-                        onDelete={() => deleteContact(contact)}
+                        onDelete={() => requestDeleteContact(contact)}
                       />
                     );
                   })
@@ -1928,6 +1941,51 @@ export function ContactsHome() {
               onClick={viewQbrContacts}
             >
               View accounts
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deletePrompt)}
+        onOpenChange={(open) => {
+          if (!open) setDeletePrompt(null);
+        }}
+      >
+        <DialogContent
+          title={
+            deletePrompt?.mode === "bulk" ? "Delete contacts?" : "Delete contact?"
+          }
+          description="Associated companies and deals are not deleted. Links to this contact may be cleared."
+          onClose={() => setDeletePrompt(null)}
+        >
+          <DialogBody>
+            <p className="text-[13px] text-muted-foreground">
+              {deletePrompt?.mode === "bulk" ? (
+                <>
+                  Remove <strong>{selected.length}</strong> selected contact
+                  {selected.length === 1 ? "" : "s"} from your workspace? This cannot be
+                  undone.
+                </>
+              ) : (
+                <>
+                  Remove <strong>{fullName(deletePrompt?.contact)}</strong> from your
+                  workspace? This cannot be undone.
+                </>
+              )}
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeletePrompt(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={confirmDeleteContacts}
+            >
+              {deleting ? "Deleting…" : "Delete contact"}
             </Button>
           </DialogFooter>
         </DialogContent>

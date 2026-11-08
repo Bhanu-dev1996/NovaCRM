@@ -67,9 +67,12 @@ cd backend
 .venv\Scripts\python scripts\seed_organization.py
 .venv\Scripts\python scripts\seed_contacts.py
 .venv\Scripts\python scripts\seed_leads.py
+.venv\Scripts\python scripts\seed_companies.py
+.venv\Scripts\python scripts\seed_contact_links.py
+.venv\Scripts\python scripts\seed_deals.py
 ```
 
-That keeps workspace `a8414d8d-a9fd-4880-a557-01c9ef16046c`, seeds extra demo workspaces, and attaches members. Contact and lead seeds run only when those tables are empty for that workspace.
+That keeps workspace `a8414d8d-a9fd-4880-a557-01c9ef16046c`, seeds extra demo workspaces, and attaches members. Contact and lead seeds run only when those tables are empty for that workspace. `seed_deals.py` upserts pipeline stages and ~20 demo deals across the funnel (INR, open/won/lost).
 
 Or run `backend/supabase/seeds/001_users.sql` and `002_organization.sql` in the Supabase SQL Editor.
 
