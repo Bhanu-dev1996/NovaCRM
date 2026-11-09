@@ -1,16 +1,11 @@
-﻿import { ModulePlaceholder } from "@/components/dashboard/module-placeholder";
+﻿import { ActivitiesHome } from "@/components/activities/activities-home";
 import { siteConfig } from "@/config/site";
 
 export const metadata = {
   title: "Activities",
-  description: "Calls, emails, and meeting history.",
+  description: `Manage tasks, meetings, calls, and customer interactions in ${siteConfig.name}.`,
 };
 
 export default function ActivitiesPage() {
-  return (
-    <ModulePlaceholder
-      title="Activities"
-      description={`Calls, emails, and meeting history. Connected to your ${siteConfig.name} workspace.`}
-    />
-  );
+  return <ActivitiesHome />;
 }
