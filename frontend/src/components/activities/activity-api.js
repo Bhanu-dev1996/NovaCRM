@@ -43,6 +43,10 @@ function metaFromActivityRecord(record) {
     visibility: record.visibility || "",
     callMode: record.callMode || "",
     summary: record.summary || "",
+    durationMinutes: record.durationMinutes || "",
+    rrule: record.rrule || "",
+    externalSource: record.externalSource || "",
+    externalId: record.externalId || "",
   };
 }
 
@@ -98,6 +102,12 @@ export function toApiActivity(record) {
     ...(record.outcome ? { outcome: record.outcome } : {}),
     ...(record.emailTo ? { emailTo: record.emailTo } : {}),
     ...(record.callMode ? { callMode: record.callMode } : {}),
+    ...(record.durationMinutes
+      ? { durationMinutes: Number(record.durationMinutes) }
+      : {}),
+    ...(record.rrule ? { rrule: record.rrule } : {}),
+    ...(record.externalSource ? { externalSource: record.externalSource } : {}),
+    ...(record.externalId ? { externalId: record.externalId } : {}),
   };
 
   return {

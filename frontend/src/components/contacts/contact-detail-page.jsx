@@ -41,6 +41,7 @@ import {
   LEAD_STATUS_STYLES,
   fullName as leadFullName,
 } from "@/components/leads/leads-data";
+import { CommunicationHistoryPanel } from "@/components/communications/communication-history-panel";
 import { CompanyProfileCard } from "@/components/shared/crm-related-sidebar";
 import {
   LeadNoteComposer,
@@ -706,7 +707,17 @@ export function ContactDetailPage({
               <TabsTrigger value="activity" className={crmType.tabLine}>
                 Activity
               </TabsTrigger>
+              <TabsTrigger value="communications" className={crmType.tabLine}>
+                Communications
+              </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="communications" className="mt-3">
+              <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+                <SectionLabel>Communication history</SectionLabel>
+                <CommunicationHistoryPanel contact={contact} />
+              </div>
+            </TabsContent>
 
             <TabsContent value="activity" className="mt-3 space-y-3">
               <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">

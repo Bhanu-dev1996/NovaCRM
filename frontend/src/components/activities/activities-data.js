@@ -151,7 +151,7 @@ export const ACTIVITY_STATUS_FILTER_OPTIONS = [
   { value: "Logged", label: "Logged" },
 ];
 
-function parseWhen(value) {
+export function parseWhen(value) {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;

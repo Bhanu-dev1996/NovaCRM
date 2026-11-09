@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Activity,
@@ -50,6 +50,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { fetchCommunicationsInboxSummary } from "@/components/communications/communications-api";
+import { formatNavUnreadBadge } from "@/components/communications/communications-data";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -124,7 +126,7 @@ const NAV_GROUPS = [
   {
     label: "Engagement",
     items: [
-      { href: "/communications", label: "Communications", icon: Mail, badge: "3" },
+      { href: "/communications", label: "Communications", icon: Mail, navBadge: "communicationsUnread" },
       { href: "/marketing", label: "Marketing", icon: Megaphone },
       { href: "/support", label: "Support", icon: Headphones },
       { href: "/projects", label: "Projects", icon: FolderKanban },
@@ -144,8 +146,13 @@ function isActivePath(pathname, href) {
   return pathname.startsWith(href);
 }
 
-function NavLink({ item, active, collapsed, onNavigate }) {
+function NavLink({ item, active, collapsed, onNavigate, navBadges }) {
   const Icon = item.icon;
+  const dynamicBadge =
+    item.navBadge && navBadges
+      ? formatNavUnreadBadge(navBadges[item.navBadge])
+      : null;
+  const badgeLabel = dynamicBadge ?? item.badge ?? null;
   return (
     <Link
       href={item.href}
@@ -169,7 +176,7 @@ function NavLink({ item, active, collapsed, onNavigate }) {
       {!collapsed ? (
         <>
           <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
-          {item.badge ? (
+          {badgeLabel ? (
             <span
               className={cn(
                 "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
@@ -178,7 +185,7 @@ function NavLink({ item, active, collapsed, onNavigate }) {
                   : "bg-neutral-100 text-neutral-600"
               )}
             >
-              {item.badge}
+              {badgeLabel}
             </span>
           ) : null}
         </>
@@ -565,6 +572,7 @@ function Sidebar({
   user,
   collapsed,
   onNavigate,
+  navBadges,
 }) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden border-r border-neutral-200 bg-[#fbfbfd]">
@@ -624,6 +632,7 @@ function Sidebar({
                     active={isActivePath(pathname, item.href)}
                     collapsed={collapsed}
                     onNavigate={onNavigate}
+                    navBadges={navBadges}
                   />
                 ))}
               </div>
@@ -708,6 +717,18 @@ function AppShellContent({ children }) {
   const [signingOut, setSigningOut] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [navBadges, setNavBadges] = useState({ communicationsUnread: null });
+
+  const refreshCommunicationsUnread = useCallback(async () => {
+    try {
+      const summary = await fetchCommunicationsInboxSummary();
+      const unread = summary?.unreadTotal ?? 0;
+      setNavBadges((prev) => ({ ...prev, communicationsUnread: unread }));
+    } catch {
+      setNavBadges((prev) => ({ ...prev, communicationsUnread: null }));
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function boot() {
@@ -743,6 +764,7 @@ function AppShellContent({ children }) {
       setWorkspace(ws.organization);
       setWorkspaces(ws.organizations || []);
       toast.success(`Switched to ${ws.organization?.name || "workspace"}`);
+      void refreshCommunicationsUnread();
       router.refresh();
     } catch (error) {
       toast.error(error.message || "Could not switch workspace");
@@ -774,12 +796,34 @@ function AppShellContent({ children }) {
       if (detail.user) {
         setUser((prev) => ({ ...(prev || {}), ...detail.user }));
       }
+      refreshCommunicationsUnread();
     }
     window.addEventListener("novacrm:workspace-updated", onWorkspaceUpdated);
     return () => {
       window.removeEventListener(
         "novacrm:workspace-updated",
         onWorkspaceUpdated
+      );
+    };
+  }, [refreshCommunicationsUnread]);
+
+  useEffect(() => {
+    if (!loading && user) {
+      refreshCommunicationsUnread();
+    }
+  }, [loading, user, workspace?.id, pathname, refreshCommunicationsUnread]);
+
+  useEffect(() => {
+    function onCommunicationsUnread(event) {
+      const unread = event.detail?.unread;
+      if (typeof unread !== "number") return;
+      setNavBadges((prev) => ({ ...prev, communicationsUnread: unread }));
+    }
+    window.addEventListener("novacrm:communications-unread", onCommunicationsUnread);
+    return () => {
+      window.removeEventListener(
+        "novacrm:communications-unread",
+        onCommunicationsUnread
       );
     };
   }, []);
@@ -829,6 +873,7 @@ function AppShellContent({ children }) {
           onSwitchWorkspace={handleSwitchWorkspace}
           user={user}
           collapsed={collapsed}
+          navBadges={navBadges}
         />
       </aside>
 
@@ -858,6 +903,7 @@ function AppShellContent({ children }) {
               user={user}
               collapsed={false}
               onNavigate={() => setMobileOpen(false)}
+              navBadges={navBadges}
             />
           </aside>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   ArrowDownUp,
@@ -187,6 +187,7 @@ function TruncateText({ value, className }) {
 
 export function ActivitiesHome() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loadStatus, setLoadStatus] = useState("loading");
   const [rows, setRows] = useState([]);
   const [owners, setOwners] = useState(CONTACT_OWNERS);
@@ -273,6 +274,26 @@ export function ActivitiesHome() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (loadStatus !== "ready") return;
+    if (searchParams.get("action") !== "create") return;
+    const type = searchParams.get("type") || "task";
+    const allowed = ACTIVITY_TYPE_LIST.map((t) => t.value);
+    const activityType = allowed.includes(type) ? type : "task";
+    const subject = searchParams.get("subject") || "";
+    setFormType(activityType);
+    setEditingRecord({
+      relatedContactId: searchParams.get("contact_id") || "",
+      relatedCompanyId: searchParams.get("company_id") || "",
+      relatedDealId: searchParams.get("deal_id") || "",
+      ...(activityType === "task"
+        ? { title: subject, subject: subject }
+        : { subject: subject }),
+    });
+    setFormOpen(true);
+    router.replace("/activities");
+  }, [loadStatus, searchParams, router]);
 
   const lookups = useMemo(
     () => ({ contacts, companies, deals, leads, fullName }),

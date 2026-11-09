@@ -215,6 +215,121 @@ ACTIVITY_STATUSES = {
 ACTIVITY_PRIORITIES = ("low", "medium", "high")
 OWNER_KEYS = tuple(OWNER_EMAIL_BY_KEY.keys())
 
+# 8:00–17:30 local-style slots (minutes from midnight) for calendar week/day views.
+CALENDAR_SLOT_MINUTES = (
+    480,
+    510,
+    540,
+    570,
+    615,
+    645,
+    675,
+    720,
+    750,
+    780,
+    810,
+    840,
+    870,
+    900,
+    930,
+    960,
+    990,
+    1020,
+    1050,
+)
+
+
+def _due_at_spread(now: datetime, day_offset: int, slot_index: int) -> datetime:
+    base = (now + timedelta(days=day_offset)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    total_min = CALENDAR_SLOT_MINUTES[slot_index % len(CALENDAR_SLOT_MINUTES)]
+    return base + timedelta(minutes=total_min)
+
+
+def _duration_minutes_for_type(activity_type: str, slot_index: int) -> int:
+    base = {
+        "meeting": 60,
+        "call": 30,
+        "email": 30,
+        "note": 30,
+        "task": 45,
+    }.get(activity_type, 30)
+    return min(120, base + (slot_index % 3) * 15)
+
+
+def _reschedule_existing_seed_times(
+    conn: psycopg.Connection, org_id: str, now: datetime
+) -> tuple[int, int]:
+    """Spread [seed] due_at values across business hours (idempotent)."""
+    activities = conn.execute(
+        """
+        select id, status, type
+        from activities
+        where organization_id = %s
+          and (
+            subject like '[seed]%%'
+            or coalesce(meta->>'seedBulk', 'false') = 'true'
+          )
+        order by created_at, id
+        """,
+        (org_id,),
+    ).fetchall()
+    act_updated = 0
+    for i, (aid, status, atype) in enumerate(activities):
+        day_offset = -20 + (i % 41)
+        due_at = _due_at_spread(now, day_offset, i)
+        duration = _duration_minutes_for_type(atype or "meeting", i)
+        completed_at = (
+            due_at + timedelta(hours=1)
+            if status in ("Completed", "Logged", "Cancelled")
+            else None
+        )
+        conn.execute(
+            """
+            update activities
+            set
+              due_at = %s,
+              completed_at = case
+                when status in ('Completed', 'Logged', 'Cancelled') then %s::timestamptz
+                else completed_at
+              end,
+              meta = coalesce(meta, '{}'::jsonb) || jsonb_build_object(
+                'durationMinutes', %s::int,
+                'seedSpread', true
+              ),
+              updated_at = %s
+            where id = %s
+            """,
+            (due_at, completed_at, duration, now, aid),
+        )
+        act_updated += 1
+
+    tasks = conn.execute(
+        """
+        select id, status
+        from tasks
+        where organization_id = %s and title like '[seed]%%'
+        order by created_at, id
+        """,
+        (org_id,),
+    ).fetchall()
+    task_updated = 0
+    for i, (tid, status) in enumerate(tasks):
+        day_offset = -15 + (i % 31)
+        due_at = _due_at_spread(now, day_offset, i + 17)
+        conn.execute(
+            """
+            update tasks
+            set due_at = %s, updated_at = %s
+            where id = %s
+            """,
+            (due_at, now, tid),
+        )
+        task_updated += 1
+
+    return task_updated, act_updated
+
 
 def _row_id(
     conn: psycopg.Connection,
@@ -467,7 +582,8 @@ def _seed_bulk_rows(
             break
         owner_key = OWNER_KEYS[index % len(OWNER_KEYS)]
         assignee = owner_by_key.get(owner_key) or default_owner
-        due_at = now + timedelta(days=-20 + (index % 41))
+        day_offset = -20 + (index % 41)
+        due_at = _due_at_spread(now, day_offset, index)
         act_type = ACTIVITY_TYPES[index % len(ACTIVITY_TYPES)]
         subject = f"[seed] Demo {act_type} #{index:03d}"
         exists = conn.execute(
@@ -528,7 +644,13 @@ def _seed_bulk_rows(
                 f"Seeded {act_type} row {index} — full column coverage for Activities table.",
                 status,
                 priority,
-                json.dumps({"seedBulk": True, "index": index}),
+                json.dumps(
+                    {
+                        "seedBulk": True,
+                        "index": index,
+                        "durationMinutes": _duration_minutes_for_type(act_type, index),
+                    }
+                ),
                 due_at,
                 completed_at,
                 now - timedelta(days=index % 10),
@@ -546,7 +668,8 @@ def _seed_bulk_rows(
             break
         owner_key = OWNER_KEYS[t_index % len(OWNER_KEYS)]
         assignee = owner_by_key.get(owner_key) or default_owner
-        due_at = now + timedelta(days=-15 + (t_index % 31))
+        day_offset = -15 + (t_index % 31)
+        due_at = _due_at_spread(now, day_offset, t_index + 40)
         title = f"[seed] Demo task #{t_index:03d} — pipeline follow-up"
         exists = conn.execute(
             """
@@ -696,7 +819,7 @@ def main() -> None:
                 (PRIMARY_ORG_ID, name),
             )
 
-        for spec in SEED_TASKS:
+        for t_i, spec in enumerate(SEED_TASKS):
             exists = conn.execute(
                 """
                 select id from tasks
@@ -709,7 +832,7 @@ def main() -> None:
                 continue
 
             assignee = owner_by_key.get(spec["owner_key"]) or default_owner
-            due_at = now + timedelta(days=spec["due_offset_days"])
+            due_at = _due_at_spread(now, spec["due_offset_days"], t_i)
             cid = contact_id(spec.get("contact_email"))
             comp = company_id(spec.get("company_name"))
             lid = lead_id(spec.get("lead_email"))
@@ -740,7 +863,7 @@ def main() -> None:
             )
             tasks_created += 1
 
-        for spec in SEED_ACTIVITIES:
+        for a_i, spec in enumerate(SEED_ACTIVITIES):
             exists = conn.execute(
                 """
                 select id from activities
@@ -755,16 +878,23 @@ def main() -> None:
             assignee = owner_by_key.get(spec["owner_key"]) or default_owner
             due_offset = spec.get("due_offset_days")
             due_at = (
-                now + timedelta(days=due_offset) if due_offset is not None else None
+                _due_at_spread(now, due_offset, a_i)
+                if due_offset is not None
+                else None
             )
             completed_offset = spec.get("completed_offset_days")
             completed_at = (
-                now + timedelta(days=completed_offset)
+                _due_at_spread(now, completed_offset, a_i) + timedelta(hours=1)
                 if completed_offset is not None
                 else None
             )
 
-            meta = spec.get("meta") or {}
+            meta = dict(spec.get("meta") or {})
+            if due_at is not None:
+                meta.setdefault(
+                    "durationMinutes",
+                    _duration_minutes_for_type(spec.get("type", "meeting"), a_i),
+                )
             priority = spec.get("priority") or "medium"
             if priority == "urgent":
                 priority = "high"
@@ -827,6 +957,9 @@ def main() -> None:
             conn, PRIMARY_ORG_ID, default_owner, now
         )
         deals_linked = _backfill_missing_deal_links(conn, PRIMARY_ORG_ID, now)
+        tasks_rescheduled, activities_rescheduled = _reschedule_existing_seed_times(
+            conn, PRIMARY_ORG_ID, now
+        )
 
         conn.commit()
         tasks_total, activities_total = _table_row_counts(conn, PRIMARY_ORG_ID)
@@ -834,6 +967,7 @@ def main() -> None:
             f"Activities seed: +{tasks_created} tasks, +{activities_created} activities; "
             f"backfilled {tasks_backfilled} tasks, {activities_backfilled} activities; "
             f"linked {deals_linked} deal_id values; "
+            f"rescheduled {activities_rescheduled} activities, {tasks_rescheduled} tasks across business hours; "
             f"totals — tasks {tasks_total}, activities {activities_total} ({org[1]})"
         )
 

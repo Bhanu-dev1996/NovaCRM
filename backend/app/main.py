@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import FRONTEND_URL
 from app.routes.auth import router as auth_router
 from app.routes.countries import router as countries_router
+from app.routes.calendar_sync import router as calendar_sync_router
+from app.routes.communications import router as communications_router
 from app.routes.crm import router as crm_router
 from app.routes.health import router as health_router
 from app.routes.location import router as location_router
@@ -31,6 +33,9 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(countries_router)
 app.include_router(location_router)
+# Before crm catch-all /api/{resource} — otherwise /api/calendar/* hits Unknown resource.
+app.include_router(calendar_sync_router)
+app.include_router(communications_router)
 app.include_router(crm_router)
 
 

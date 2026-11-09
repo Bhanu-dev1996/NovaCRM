@@ -13,6 +13,8 @@ export function CrmPageHeader({
   crumb,
   title,
   description,
+  descriptionClassName,
+  extraActions,
   actionLabel,
   onAction,
 }) {
@@ -29,18 +31,29 @@ export function CrmPageHeader({
         <h1 className="text-[26px] leading-8 font-bold tracking-[-0.03em] text-neutral-900 sm:text-[28px] dark:text-neutral-50">
           {title}
         </h1>
-        <p className={cn("mt-1 max-w-[56ch]", crmType.pageDescription)}>
+        <p
+          className={cn(
+            "mt-1 max-w-[56ch]",
+            crmType.pageDescription,
+            descriptionClassName
+          )}
+        >
           {description}
         </p>
       </div>
-      {actionLabel ? (
-        <Button
-          type="button"
-          className="h-9 gap-1.5 rounded-lg px-3"
-          onClick={onAction}
-        >
-          {actionLabel}
-        </Button>
+      {extraActions || actionLabel ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {extraActions}
+          {actionLabel ? (
+            <Button
+              type="button"
+              className="h-9 gap-1.5 rounded-lg px-3"
+              onClick={onAction}
+            >
+              {actionLabel}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

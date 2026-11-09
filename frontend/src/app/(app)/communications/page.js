@@ -1,15 +1,20 @@
-import { ModulePlaceholder } from "@/components/dashboard/module-placeholder";
+import { Suspense } from "react";
+
+import {
+  CommunicationsHome,
+  CommunicationsSkeleton,
+} from "@/components/communications/communications-home";
+import { siteConfig } from "@/config/site";
 
 export const metadata = {
   title: "Communications",
-  description: "Email and conversation history.",
+  description: `Unified inbox and customer conversations in ${siteConfig.name}.`,
 };
 
 export default function CommunicationsPage() {
   return (
-    <ModulePlaceholder
-      title="Communications"
-      description="Email threads, call logs, and customer conversations."
-    />
+    <Suspense fallback={<CommunicationsSkeleton />}>
+      <CommunicationsHome />
+    </Suspense>
   );
 }

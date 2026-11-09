@@ -309,10 +309,12 @@ export function DateTimePicker({
   id,
   value,
   onChange,
+  onBlur,
   placeholder = "Pick date and time",
   className,
   disabled = false,
   align = "start",
+  "aria-invalid": ariaInvalid,
 }) {
   const [open, setOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
@@ -344,6 +346,7 @@ export function DateTimePicker({
       setTimeOpen(false);
     } else {
       setTimeOpen(false);
+      onBlur?.();
     }
     setOpen(nextOpen);
   }
@@ -364,6 +367,7 @@ export function DateTimePicker({
             type="button"
             variant="outline"
             size="lg"
+            aria-invalid={ariaInvalid}
             className={cn(
               crmControl.pickerTrigger,
               !selected && "text-muted-foreground",

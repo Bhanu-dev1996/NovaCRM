@@ -184,6 +184,18 @@
   --breakpoint-wide: 1440px;
 }
 
+@layer components {
+  .tiptap-editor-surface {
+    width: 100%;
+    max-width: none;
+  }
+
+  .tiptap-editor-surface [contenteditable="true"] {
+    width: 100%;
+    max-width: none;
+  }
+}
+
 @layer utilities {
   .bg-luminous-ai-aura {
     background-image: var(--gradient-luminous-ai-aura);

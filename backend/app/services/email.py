@@ -226,6 +226,20 @@ def _reset_text(*, name: str | None, reset_url: str) -> str:
     )
 
 
+def send_crm_email(
+    *,
+    to_email: str,
+    subject: str,
+    text: str,
+    from_name: str | None = None,
+    reply_to: str | None = None,
+) -> None:
+    """Outbound CRM email from the Communications module."""
+    del from_name, reply_to
+    html = f"<pre style=\"font-family:inherit;white-space:pre-wrap\">{text}</pre>"
+    _dispatch(to_email=to_email, subject=subject, text=text, html=html)
+
+
 def send_password_reset_email(*, to_email: str, name: str | None, token: str) -> None:
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
     _dispatch(
