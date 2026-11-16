@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from psycopg.types.json import Jsonb
 
 from app.db import get_connection, serialize_row, serialize_rows
+from app.services.comm_call_sync import sync_call_logs_from_activities
 from app.services.comm_seed_data import seed_demo_conversations
 from app.services.email import email_delivery_configured, send_crm_email
 
@@ -132,6 +133,9 @@ def _conversation_to_client(row: dict, messages: list[dict]) -> dict:
         "awaitingResponse": bool(row.get("awaiting_response")),
         "lastMessagePreview": row.get("last_message_preview") or "",
         "lastMessageAt": row.get("last_message_at"),
+        "activityId": str(row["source_activity_id"])
+        if row.get("source_activity_id")
+        else "",
         "messages": [_message_to_client(m) for m in messages],
     }
 
@@ -269,6 +273,21 @@ def load_workspace_state(*, organization_id: str) -> dict[str, Any]:
                     (organization_id,),
                 )
                 conv_rows = serialize_rows(cursor.fetchall())
+            try:
+                if sync_call_logs_from_activities(cursor, organization_id):
+                    connection.commit()
+                    cursor.execute(
+                        """
+                        select * from comm_conversations
+                        where organization_id = %s
+                        order by last_message_at desc nulls last, created_at desc
+                        limit 500
+                        """,
+                        (organization_id,),
+                    )
+                    conv_rows = serialize_rows(cursor.fetchall())
+            except Exception:
+                pass
             conv_ids = [r["id"] for r in conv_rows]
             messages_by_conv: dict[str, list[dict]] = {str(cid): [] for cid in conv_ids}
             if conv_ids:

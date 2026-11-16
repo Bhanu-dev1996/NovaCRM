@@ -1,15 +1,20 @@
-import { ModulePlaceholder } from "@/components/dashboard/module-placeholder";
+import { Suspense } from "react";
+
+import {
+  MarketingOverviewHome,
+  MarketingOverviewSkeleton,
+} from "@/components/marketing/marketing-overview-home";
+import { siteConfig } from "@/config/site";
 
 export const metadata = {
   title: "Marketing",
-  description: "Campaigns and nurturing.",
+  description: `Campaigns, audiences, and engagement in ${siteConfig.name}.`,
 };
 
 export default function MarketingPage() {
   return (
-    <ModulePlaceholder
-      title="Marketing"
-      description="Campaigns, sequences, and lead nurturing tools."
-    />
+    <Suspense fallback={<MarketingOverviewSkeleton />}>
+      <MarketingOverviewHome />
+    </Suspense>
   );
 }

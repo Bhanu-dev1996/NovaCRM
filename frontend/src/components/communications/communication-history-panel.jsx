@@ -52,7 +52,8 @@ export function CommunicationHistoryPanel({ contact }) {
   if (!rows.length) {
     return (
       <p className="py-8 text-center text-[13px] text-muted-foreground">
-        No linked conversations yet. Messages sent from Communications will appear here.
+        No email or call history yet. Inbox messages and logged calls from Activities
+        appear here when they match this contact.
       </p>
     );
   }

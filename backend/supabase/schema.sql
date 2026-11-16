@@ -209,6 +209,7 @@ create table if not exists public.comm_conversations (
   awaiting_response boolean not null default false,
   last_message_preview text,
   last_message_at timestamptz,
+  source_activity_id uuid references public.activities (id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

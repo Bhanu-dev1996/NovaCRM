@@ -326,7 +326,7 @@ export function demoLinkedDealSpecsForContact(email) {
 }
 
 export function ownerById(id, owners = CONTACT_OWNERS) {
-  const list = owners?.length ? owners : CONTACT_OWNERS;
+  const list = Array.isArray(owners) && owners.length ? owners : CONTACT_OWNERS;
   return (
     list.find((owner) => owner.id === id) ||
     list[0] || { id: "", name: "Unassigned", initials: "?" }

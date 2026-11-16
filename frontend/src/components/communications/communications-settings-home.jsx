@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Bell, Cable, Mail, Phone, Shield } from "lucide-react";
 import { toast } from "sonner";
@@ -183,7 +184,7 @@ export function CommunicationsSettingsHome() {
             <TabsContent value="channels" className="mt-0 outline-none">
               <SectionIntro
                 title="Connected channels"
-                description="Email status reflects backend delivery config; call history links to Activities."
+                description="Email uses server delivery settings. Logged and completed calls in Activities appear in the inbox automatically."
               />
               <div className="grid gap-3 px-5 pb-5 pt-5 sm:grid-cols-2">
                 {COMM_CHANNELS.map((ch) => {
@@ -211,22 +212,34 @@ export function CommunicationsSettingsHome() {
                           </Badge>
                         </div>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-full rounded-lg text-[12px]"
-                        disabled={connected}
-                        onClick={() =>
-                          toast.message(
-                            connected
-                              ? "Email delivery is configured on the server (SMTP or Resend)."
-                              : "Set RESEND_API_KEY or SMTP credentials in backend/.env."
-                          )
-                        }
-                      >
-                        {connected ? "Delivery configured" : "Configure server email"}
-                      </Button>
+                      {ch.id === "call" ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-full rounded-lg text-[12px]"
+                          render={<Link href="/activities" />}
+                        >
+                          Manage call logs
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 w-full rounded-lg text-[12px]"
+                          disabled={connected}
+                          onClick={() =>
+                            toast.message(
+                              connected
+                                ? "Email delivery is configured on the server (SMTP or Resend)."
+                                : "Set RESEND_API_KEY or SMTP credentials in backend/.env."
+                            )
+                          }
+                        >
+                          {connected ? "Delivery configured" : "Configure server email"}
+                        </Button>
+                      )}
                     </div>
                   );
                 })}

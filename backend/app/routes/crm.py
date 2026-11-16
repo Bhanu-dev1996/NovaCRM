@@ -6,6 +6,10 @@ from pydantic import BaseModel, Field
 from app.config import FRONTEND_URL, ORGANIZATION_COOKIE, SESSION_MAX_AGE
 from app.deps import require_user, require_workspace
 from app.services import crud
+from app.services.comm_call_sync import (
+    call_activity_qualifies,
+    sync_call_log_for_activity_id,
+)
 from app.services.organizations import (
     complete_workspace_setup,
     get_membership,
@@ -194,6 +198,11 @@ def create_resource(
     row = crud.create_row(
         table, organization_id=ctx["organization_id"], payload=payload
     )
+    if resource == "activities" and call_activity_qualifies(row):
+        sync_call_log_for_activity_id(
+            organization_id=ctx["organization_id"],
+            activity_id=str(row["id"]),
+        )
     return {"data": row}
 
 
@@ -211,6 +220,13 @@ def update_resource(
         row_id=row_id,
         payload=payload,
     )
+    if resource == "activities":
+        activity_type = (row.get("type") or payload.get("type") or "").lower()
+        if activity_type == "call" and call_activity_qualifies(row):
+            sync_call_log_for_activity_id(
+                organization_id=ctx["organization_id"],
+                activity_id=str(row["id"]),
+            )
     return {"data": row}
 
 

@@ -506,6 +506,21 @@ export function buildForwardQuote(conversation) {
   return `\n\n---------- Forwarded thread ----------\n${lines.join("\n\n")}`;
 }
 
+export function callLogMetaFromMessage(msg) {
+  const list = Array.isArray(msg?.attachments) ? msg.attachments : [];
+  const row =
+    list.find((a) => a && (a.activityId || a.type === "call_log")) || list[0];
+  if (!row || typeof row !== "object") return null;
+  return row;
+}
+
+export function activityDetailUrl(activityId, kind = "activity") {
+  if (!activityId) return "/activities";
+  const params = new URLSearchParams();
+  params.set("kind", kind);
+  return `/activities/${encodeURIComponent(String(activityId))}?${params.toString()}`;
+}
+
 export function activitiesCreateUrlFromConversation(conv, type = "email") {
   if (!conv) return "/activities?action=create";
   const params = new URLSearchParams();

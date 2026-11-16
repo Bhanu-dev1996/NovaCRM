@@ -36,8 +36,10 @@ import {
   COMM_KPI_DEFINITIONS,
   INBOX_NAV_ITEMS,
   activitiesCreateUrlFromConversation,
+  activityDetailUrl,
   applyTemplateVariables,
   broadcastCommunicationsUnread,
+  callLogMetaFromMessage,
   channelLabel,
   commPermissionAllows,
   computeCommKpis,
@@ -154,6 +156,52 @@ function CommSkeletonBlock({ className }) {
         className
       )}
     />
+  );
+}
+
+function CallLogMessage({ msg, fallbackOwner }) {
+  const meta = callLogMetaFromMessage(msg);
+  const activityId = meta?.activityId || "";
+  const duration = meta?.durationMinutes || meta?.duration;
+  const status = meta?.activityStatus || msg.status || "Logged";
+  const subject = meta?.activitySubject || "";
+  const sender = msg.senderName || fallbackOwner || "Team member";
+  return (
+    <li className="flex w-full max-w-[min(100%,36rem)] shrink-0">
+      <div className="w-full rounded-2xl border border-neutral-200/80 bg-gradient-to-b from-neutral-50/90 to-white p-4 shadow-sm dark:border-neutral-800 dark:from-neutral-900/60 dark:to-neutral-950">
+        <div className="flex items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300">
+            <Phone className="size-4" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-foreground">
+              {subject || "Call log"}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {sender}
+              {" · "}
+              {format(new Date(msg.createdAt), "MMM d, h:mm a")}
+              {duration ? ` · ${duration} min` : ""}
+              {status ? ` · ${status}` : ""}
+            </p>
+            <p className="mt-2 break-words whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/90">
+              {msg.body}
+            </p>
+            {activityId ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3 h-8 rounded-lg text-[11px]"
+                render={<Link href={activityDetailUrl(activityId)} />}
+              >
+                View in Activities
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -1041,6 +1089,15 @@ export function CommunicationsHome() {
                 <div className="flex min-h-0 w-full min-w-0 flex-1 basis-0 flex-col overflow-x-hidden overflow-y-auto px-4 py-4">
                   <ul className="flex w-full min-w-0 flex-col gap-3 p-0">
                     {(selected.messages || []).map((msg) => {
+                      if (selected.channel === "call" || msg.channel === "call") {
+                        return (
+                          <CallLogMessage
+                            key={msg.id}
+                            msg={msg}
+                            fallbackOwner={currentUser.name}
+                          />
+                        );
+                      }
                       const outbound = msg.direction === "outbound";
                       const senderLabel =
                         msg.senderName ||
@@ -1085,9 +1142,52 @@ export function CommunicationsHome() {
                 <div className="mt-auto shrink-0 border-t border-neutral-100 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950">
                   <div className="w-full min-w-0">
                   {selected.channel === "call" ? (
-                    <p className="rounded-xl border border-dashed border-neutral-200 bg-neutral-50/80 px-3 py-2.5 text-[12px] text-muted-foreground dark:border-neutral-800 dark:bg-neutral-900/40">
-                      Call threads are read-only here. Log follow-ups from Activities or compose email.
-                    </p>
+                    <div className="space-y-2 rounded-xl border border-dashed border-neutral-200 bg-neutral-50/80 px-3 py-3 dark:border-neutral-800 dark:bg-neutral-900/40">
+                      <p className="text-[12px] text-muted-foreground">
+                        Call logs sync from Activities when a call is logged or completed.
+                        Follow up with email or schedule another call.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {selected.activityId ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-lg text-[11px]"
+                            render={
+                              <Link href={activityDetailUrl(selected.activityId)} />
+                            }
+                          >
+                            Open activity
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 rounded-lg text-[11px]"
+                          render={
+                            <Link
+                              href={activitiesCreateUrlFromConversation(selected, "call")}
+                            />
+                          }
+                        >
+                          Log call
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 rounded-lg bg-primary-600 text-[11px] text-white hover:bg-primary-700"
+                          onClick={() => {
+                            setReplyTarget(null);
+                            setComposeForward(null);
+                            setComposeOpen(true);
+                          }}
+                        >
+                          Email follow-up
+                        </Button>
+                      </div>
+                    </div>
                   ) : (
                   <>
                   {(commState.templates || []).length > 0 ? (
@@ -1322,11 +1422,15 @@ export function CommunicationsHome() {
                       size="sm"
                       className="h-8 rounded-lg text-[11px]"
                       onClick={() =>
-                        router.push(activitiesCreateUrlFromConversation(selected, "email"))
+                        router.push(
+                          selected.channel === "call"
+                            ? activitiesCreateUrlFromConversation(selected, "call")
+                            : activitiesCreateUrlFromConversation(selected, "email")
+                        )
                       }
                     >
                       <ListTodo className="size-3.5" />
-                      Task
+                      {selected.channel === "call" ? "Call" : "Task"}
                     </Button>
                   </div>
                 </div>
